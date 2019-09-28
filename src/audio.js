@@ -1,6 +1,18 @@
 const spawn = require('child_process').spawn;
 const ffmpeg = require('ffmpeg-static');
 
+const bufferToUInt8 = (buffer) => {
+  if (!(buffer instanceof Buffer)) {
+    throw new Error('Buffer argument is not instance of Buffer');
+  }
+
+  const numbers = [];
+  for (let i = 0; i < buffer.length; i += 1) {
+    numbers.push(buffer.readUInt8(i));
+  }
+  return numbers;
+};
+
 const spawnFfmpegAudioReader = (filename, format) => {
   const ffmpegProcess = spawn(ffmpeg.path, ['-i', filename, '-f', format, '-ac', '1', '-']);
   ffmpegProcess.stderr.on('data', function (data) {
@@ -23,5 +35,6 @@ const createAudioBuffer = (filename, format) =>
   });
 
 module.exports = {
+  bufferToUInt8,
   createAudioBuffer
 };
