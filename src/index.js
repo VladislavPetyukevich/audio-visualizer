@@ -10,10 +10,17 @@ const PCM_FORMAT = {
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 const filePath = path.resolve('media/sample_noise.wav');
+const SAMPLE_RATE = 44100;
+const FPS = 20;
 
 (async () => {
   const audioBuffer = await createAudioBuffer(filePath, FFMPEG_FORMAT);
   const audioData = PCM_FORMAT.parseFunction(audioBuffer);
   const normalizedAudioData = normalizeAudioData(audioData);
-  console.log('normalizedAudioData: ', normalizedAudioData);
+
+  const audioDuration = audioData.length / SAMPLE_RATE;
+  const framesCount = Math.trunc(audioDuration * FPS + audioDuration * FPS / 4);
+  console.log('framesCount: ', framesCount);
+  const audioDataStep = Math.trunc(audioData.length / framesCount);
+  console.log('audioDataStep: ', audioDataStep);
 })();
