@@ -1,6 +1,30 @@
 const spawn = require('child_process').spawn;
 const ffmpeg = require('ffmpeg-static');
 
+const getFrequencyBuses = (FFTData, frequencyBuses) => {
+  const result = {};
+  frequencyBuses.forEach((bus, index) => {
+    if (index === frequencyBuses.length - 1) {
+      return;
+    }
+    result[bus] = 0
+  });
+  FFTData.forEach(data => {
+    frequencyBuses.forEach((bus, index) => {
+      const nextBus = frequencyBuses[index + 1];
+      if (!nextBus) {
+        return;
+      }
+      if ((data.frequency >= bus) && (data.frequency < nextBus)) {
+        result[bus] = (result[bus]) ? (result[bus] + data.magnitude) / 2 : data.magnitude;
+      }
+    });
+
+  });
+
+  return result;
+};
+
 const bufferToUInt8 = (buffer) => {
   if (!(buffer instanceof Buffer)) {
     throw new Error('Buffer argument is not instance of Buffer');
@@ -39,5 +63,6 @@ const createAudioBuffer = (filename, format) =>
 module.exports = {
   bufferToUInt8,
   normalizeAudioData,
-  createAudioBuffer
+  createAudioBuffer,
+  getFrequencyBuses
 };
