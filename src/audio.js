@@ -13,6 +13,8 @@ const bufferToUInt8 = (buffer) => {
   return numbers;
 };
 
+const normalizeAudioData = PCMData => PCMData.map(num => (num - 128) / 128);
+
 const spawnFfmpegAudioReader = (filename, format) => {
   const ffmpegProcess = spawn(ffmpeg.path, ['-i', filename, '-f', format, '-ac', '1', '-']);
   ffmpegProcess.stderr.on('data', function (data) {
@@ -36,5 +38,6 @@ const createAudioBuffer = (filename, format) =>
 
 module.exports = {
   bufferToUInt8,
+  normalizeAudioData,
   createAudioBuffer
 };
