@@ -13,5 +13,8 @@
   "license": "ISC",
   "devDependencies": {
     "node-dev": "^4.0.0"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^2.6.0"
   }
 }
