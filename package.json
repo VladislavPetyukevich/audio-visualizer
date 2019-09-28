@@ -15,6 +15,7 @@
     "node-dev": "^4.0.0"
   },
   "dependencies": {
-    "ffmpeg-static": "^2.6.0"
+    "ffmpeg-static": "^2.6.0",
+    "pngjs": "^3.4.0"
   }
 }
