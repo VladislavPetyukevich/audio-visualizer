@@ -20,7 +20,11 @@ const drawFrequencyBuses = (imageDstBuffer, frequencyBuses) => {
   const busWidth = imageDstBuffer.width / busesCount;
   const busHeight = 300;
   Object.entries(frequencyBuses).forEach(([bus, value], index) => {
-    drawRect(imageDstBuffer, busWidth * index + (margin / 2), 0, busWidth - margin, busHeight * value);
+    const rectX = busWidth * index + (margin / 2);
+    const rectY = 0;
+    const rectWidth = busWidth - margin;
+    const rectHeight = busHeight * value;
+    drawRect(imageDstBuffer, rectX, rectY, rectWidth, rectHeight);
   });
 };
 
