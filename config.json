@@ -1,0 +1,27 @@
+{
+  "image": {
+    "path": "media/background.png"
+  },
+  "audio": {
+    "path": "media/sample_noise.wav",
+    "sampleRate": 44100
+  },
+  "outVideo": {
+    "path": "media/out.mp4",
+    "fps": 20,
+    "spectrum": {
+      "frequencyBuses": [
+        0,
+        50,
+        100,
+        200,
+        500,
+        1000,
+        2000,
+        3000,
+        5000,
+        10000
+      ]
+    }
+  }
+}
