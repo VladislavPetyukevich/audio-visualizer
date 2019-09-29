@@ -21,7 +21,9 @@ const renderAudioVisualizer = async (config) => {
   const outVideoPath = path.resolve(config.outVideo.path);
   const SAMPLE_RATE = config.audio.sampleRate;
   const FPS = config.outVideo.fps;
-  const frequencyBuses = config.outVideo.spectrum.frequencyBuses;
+  const frequencyBuses =
+    (config.outVideo.spectrum && config.outVideo.spectrum.frequencyBuses) ||
+    [0, 50, 100, 200, 500, 1000, 2000, 3000, 5000, 10000];
 
   const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
   const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
