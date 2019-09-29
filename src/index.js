@@ -3,11 +3,10 @@ const fs = require('fs');
 const createAudioBuffer = require('./audio').createAudioBuffer;
 const bufferToUInt8 = require('./audio').bufferToUInt8;
 const normalizeAudioData = require('./audio').normalizeAudioData;
-const getFrequencyBuses = require('./audio').getFrequencyBuses;
+const getSmoothBusesSequences = require('./audio').getSmoothBusesSequences;
 const createVisualizerFrame = require('./image').createVisualizerFrame;
 const createImageBuffer = require('./image').createImageBuffer;
 const spawnFfmpegVideoWriter = require('./video').spawnFfmpegVideoWriter;
-const getFFT = require('./fft').getFFT;
 
 const PCM_FORMAT = {
   bit: 8,
@@ -31,14 +30,11 @@ const FPS = 20;
 
   const audioDuration = audioData.length / SAMPLE_RATE;
   const framesCount = Math.trunc(audioDuration * FPS + audioDuration * FPS / 4);
-  console.log('framesCount: ', framesCount);
-  const audioDataStep = Math.trunc(audioData.length / framesCount);
-  console.log('audioDataStep: ', audioDataStep);
+  const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, SAMPLE_RATE);
 
-  for (let i = 0; i < audioData.length; i += audioDataStep) {
-    const normalizedAudioFrame = normalizedAudioData.slice(i, i + audioDataStep);
-    const fft = getFFT(normalizedAudioFrame, SAMPLE_RATE);
-    const buses = getFrequencyBuses(fft, frequencyBuses);
+  for (let i = 0; i < framesCount; i++) {
+    const buses = {};
+    Object.keys(smoothBusesSequences).forEach(bus => buses[bus] = smoothBusesSequences[bus][i]);
     const frameImage = await createVisualizerFrame(backgroundImageBuffer, buses);
     const frameImageBuffer = await createImageBuffer(frameImage);
     ffmpegVideoWriter.stdin.write(frameImageBuffer);

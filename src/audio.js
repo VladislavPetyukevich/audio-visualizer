@@ -1,5 +1,32 @@
 const spawn = require('child_process').spawn;
 const ffmpeg = require('ffmpeg-static');
+const getFFT = require('./fft').getFFT;
+const smooth = require('array-smooth');
+
+const getSmoothBusesSequences = (audioData, framesCount, frequencyBuses, sampleRate) => {
+  const audioDataStep = Math.trunc(audioData.length / framesCount);
+  const busesSequences = {};
+  frequencyBuses.forEach(
+    (frequencyBus, index) => {
+      if (index === frequencyBuses.length - 1) {
+        return;
+      }
+      busesSequences[frequencyBus] = [];
+    }
+  );
+
+  for (let i = 0; i < audioData.length; i += audioDataStep) {
+    const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
+    const fft = getFFT(normalizedAudioFrame, sampleRate);
+    const buses = getFrequencyBuses(fft, frequencyBuses);
+    Object.entries(buses).forEach(([bus, value]) => busesSequences[bus].push(value));
+  }
+  const smoothBusesSequences = {};
+  Object.entries(busesSequences).forEach(
+    ([bus, sequence]) => smoothBusesSequences[bus] = smooth(busesSequences[bus], 1)
+  );
+  return smoothBusesSequences;
+};
 
 const getFrequencyBuses = (FFTData, frequencyBuses) => {
   const result = {};
@@ -64,5 +91,6 @@ module.exports = {
   bufferToUInt8,
   normalizeAudioData,
   createAudioBuffer,
-  getFrequencyBuses
+  getFrequencyBuses,
+  getSmoothBusesSequences
 };
