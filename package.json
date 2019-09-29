@@ -15,6 +15,7 @@
     "node-dev": "^4.0.0"
   },
   "dependencies": {
+    "array-smooth": "^1.0.0",
     "ffmpeg-static": "^2.6.0",
     "fft-js": "0.0.12",
     "pngjs": "^3.4.0"
