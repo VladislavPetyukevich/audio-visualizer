@@ -7,7 +7,6 @@ const getSmoothBusesSequences = require('./audio').getSmoothBusesSequences;
 const createVisualizerFrame = require('./image').createVisualizerFrame;
 const createImageBuffer = require('./image').createImageBuffer;
 const spawnFfmpegVideoWriter = require('./video').spawnFfmpegVideoWriter;
-const config = require('../config.json');
 
 const PCM_FORMAT = {
   bit: 8,
@@ -15,14 +14,15 @@ const PCM_FORMAT = {
   parseFunction: bufferToUInt8
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
-const audioFilePath = path.resolve(config.audio.path);
-const backgroundImagePath = path.resolve(config.image.path);
-const outVideoPath = path.resolve(config.outVideo.path);
-const SAMPLE_RATE = config.audio.sampleRate;
-const FPS = config.outVideo.fps;
-const frequencyBuses = config.outVideo.spectrum.frequencyBuses;
 
-(async () => {
+const renderAudioVisualizer = async (config) => {
+  const audioFilePath = path.resolve(config.audio.path);
+  const backgroundImagePath = path.resolve(config.image.path);
+  const outVideoPath = path.resolve(config.outVideo.path);
+  const SAMPLE_RATE = config.audio.sampleRate;
+  const FPS = config.outVideo.fps;
+  const frequencyBuses = config.outVideo.spectrum.frequencyBuses;
+
   const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
   const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
   const audioData = PCM_FORMAT.parseFunction(audioBuffer);
@@ -42,5 +42,6 @@ const frequencyBuses = config.outVideo.spectrum.frequencyBuses;
   }
 
   ffmpegVideoWriter.stdin.end();
-  console.log('end');
-})();
+};
+
+module.exports = renderAudioVisualizer;
