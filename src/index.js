@@ -33,7 +33,7 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   ffmpegVideoWriter.on('exit', code => resolve(code));
 
   const audioDuration = audioData.length / SAMPLE_RATE;
-  const framesCount = Math.trunc(audioDuration * FPS + audioDuration * FPS / 4);
+  const framesCount = Math.trunc(audioDuration * FPS);
   const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, SAMPLE_RATE);
 
   for (let i = 0; i < framesCount; i++) {
