@@ -15,7 +15,7 @@ const PCM_FORMAT = {
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 
-const renderAudioVisualizer = async (config) => {
+const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   const audioFilePath = path.resolve(config.audio.path);
   const backgroundImagePath = path.resolve(config.image.path);
   const outVideoPath = path.resolve(config.outVideo.path);
@@ -30,6 +30,7 @@ const renderAudioVisualizer = async (config) => {
   const audioData = PCM_FORMAT.parseFunction(audioBuffer);
   const normalizedAudioData = normalizeAudioData(audioData);
   const ffmpegVideoWriter = spawnFfmpegVideoWriter(audioFilePath, outVideoPath, FPS);
+  ffmpegVideoWriter.on('exit', code => resolve(code));
 
   const audioDuration = audioData.length / SAMPLE_RATE;
   const framesCount = Math.trunc(audioDuration * FPS + audioDuration * FPS / 4);
@@ -44,6 +45,6 @@ const renderAudioVisualizer = async (config) => {
   }
 
   ffmpegVideoWriter.stdin.end();
-};
+});
 
 module.exports = renderAudioVisualizer;
