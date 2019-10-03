@@ -24,6 +24,9 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   const frequencyBuses =
     (config.outVideo.spectrum && config.outVideo.spectrum.frequencyBuses) ||
     [0, 100, 200, 500, 1000, 2000, 3000, 5000, 10000];
+  const frequencyBusesWidth =
+    (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
+    300;
   const frequencyBusesHeight =
     (config.outVideo.spectrum && config.outVideo.spectrum.height) ||
     300;
@@ -42,7 +45,7 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   for (let i = 0; i < framesCount; i++) {
     const buses = {};
     Object.keys(smoothBusesSequences).forEach(bus => buses[bus] = smoothBusesSequences[bus][i]);
-    const frameImage = await createVisualizerFrame(backgroundImageBuffer, buses, frequencyBusesHeight);
+    const frameImage = await createVisualizerFrame(backgroundImageBuffer, buses, frequencyBusesWidth, frequencyBusesHeight);
     const frameImageBuffer = await createImageBuffer(frameImage);
     ffmpegVideoWriter.stdin.write(frameImageBuffer);
   }

@@ -10,6 +10,7 @@
     "path": "example/media/out.mp4",
     "fps": 60,
     "spectrum": {
+      "width": 960,
       "height": 300
     }
   }
