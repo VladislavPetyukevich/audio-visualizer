@@ -14,24 +14,23 @@ const drawRect = (imageDstBuffer, x, y, width, height) => {
   }
 };
 
-const drawFrequencyBuses = (imageDstBuffer, frequencyBuses) => {
+const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, height) => {
   const busesCount = Object.keys(frequencyBuses).length;
   const margin = 10;
   const busWidth = imageDstBuffer.width / busesCount;
-  const busHeight = 300;
   Object.entries(frequencyBuses).forEach(([bus, value], index) => {
     const rectX = busWidth * index + (margin / 2);
     const rectY = 0;
     const rectWidth = busWidth - margin;
-    const rectHeight = busHeight * value;
+    const rectHeight = height * value;
     drawRect(imageDstBuffer, rectX, rectY, rectWidth, rectHeight);
   });
 };
 
-const createVisualizerFrame = (backgroundImageBuffer, frequencyBuses) =>
+const createVisualizerFrame = (backgroundImageBuffer, frequencyBuses, busesHeight) =>
   new Promise((resolve, reject) => {
     new PNG({ filterType: 4 }).parse(backgroundImageBuffer, function (error, dstBuffer) {
-      drawFrequencyBuses(dstBuffer, frequencyBuses);
+      drawFrequencyBuses(dstBuffer, frequencyBuses, busesHeight);
       resolve(dstBuffer);
     });
   });
