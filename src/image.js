@@ -1,20 +1,20 @@
 const Writable = require('stream').Writable;
 const PNG = require('pngjs').PNG;
 
-const drawRect = (imageDstBuffer, x, y, width, height) => {
+const drawRect = (imageDstBuffer, x, y, width, height, color = { red: 0, green: 0, blue: 0 }) => {
   for (var currY = y; currY < y + height; currY++) {
     for (var currX = x; currX < x + width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
 
-      imageDstBuffer.data[idx] = 255;     // red
-      imageDstBuffer.data[idx + 1] = 0;   // green
-      imageDstBuffer.data[idx + 2] = 0;   // blue
+      imageDstBuffer.data[idx] = color.red;
+      imageDstBuffer.data[idx + 1] = color.green;
+      imageDstBuffer.data[idx + 2] = color.blue;
       imageDstBuffer.data[idx + 3] = 255; // alpha
     }
   }
 };
 
-const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height) => {
+const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height, color) => {
   const busesCount = Object.keys(frequencyBuses).length;
   const margin = 10;
   const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - width / 2);
@@ -24,14 +24,14 @@ const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height) => {
     const rectY = 0;
     const rectWidth = busWidth - margin;
     const rectHeight = height * value;
-    drawRect(imageDstBuffer, rectX, rectY, rectWidth, rectHeight);
+    drawRect(imageDstBuffer, rectX, rectY, rectWidth, rectHeight, color);
   });
 };
 
-const createVisualizerFrame = (backgroundImageBuffer, frequencyBuses, busesWidth, busesHeight) =>
+const createVisualizerFrame = (backgroundImageBuffer, frequencyBuses, busesWidth, busesHeight, busesColor) =>
   new Promise((resolve, reject) => {
     new PNG({ filterType: 4 }).parse(backgroundImageBuffer, function (error, dstBuffer) {
-      drawFrequencyBuses(dstBuffer, frequencyBuses, busesWidth, busesHeight);
+      drawFrequencyBuses(dstBuffer, frequencyBuses, busesWidth, busesHeight, busesColor);
       resolve(dstBuffer);
     });
   });
