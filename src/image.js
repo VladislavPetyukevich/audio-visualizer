@@ -18,9 +18,9 @@ const drawRect = (imageDstBuffer, x, y, width, height, color = { red: 0, green: 
 
 const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height, color) => {
   const busesCount = Object.keys(frequencyBuses).length;
-  const margin = 10;
   const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - width / 2);
   const busWidth = width / busesCount;
+  const margin = busWidth * 0.3;
   Object.entries(frequencyBuses).forEach(([bus, value], index) => {
     const rectX = paddingLeft + busWidth * index + (margin / 2);
     const rectY = 0;
