@@ -30,10 +30,15 @@ const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height, color
   });
 };
 
-const createVisualizerFrame = (backgroundImageBuffer, frequencyBuses, busesWidth, busesHeight, busesColor) =>
+const createVisualizerFrame = async (backgroundImageBuffer, frequencyBuses, busesWidth, busesHeight, busesColor) => {
+  const image = await parseImage(backgroundImageBuffer);
+  drawFrequencyBuses(image, frequencyBuses, busesWidth, busesHeight, busesColor);
+  return image;
+}
+
+const parseImage = (buffer) =>
   new Promise((resolve, reject) => {
-    new PNG({ filterType: 4 }).parse(backgroundImageBuffer, function (error, dstBuffer) {
-      drawFrequencyBuses(dstBuffer, frequencyBuses, busesWidth, busesHeight, busesColor);
+    new PNG({ filterType: 4 }).parse(buffer, function (error, dstBuffer) {
       resolve(dstBuffer);
     });
   });
@@ -63,6 +68,7 @@ const invertColor = (color) =>
 
 module.exports = {
   createVisualizerFrame,
+  parseImage,
   createImageBuffer,
   getImageColor,
   invertColor

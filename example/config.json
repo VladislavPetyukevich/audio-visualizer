@@ -8,10 +8,6 @@
   },
   "outVideo": {
     "path": "example/media/out.mp4",
-    "fps": 60,
-    "spectrum": {
-      "width": 300,
-      "height": 300
-    }
+    "fps": 60
   }
 }

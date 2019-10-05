@@ -5,6 +5,7 @@ const bufferToUInt8 = require('./audio').bufferToUInt8;
 const normalizeAudioData = require('./audio').normalizeAudioData;
 const getSmoothBusesSequences = require('./audio').getSmoothBusesSequences;
 const createVisualizerFrame = require('./image').createVisualizerFrame;
+const parseImage = require('./image').parseImage;
 const createImageBuffer = require('./image').createImageBuffer;
 const getImageColor = require('./image').getImageColor;
 const invertColor = require('./image').invertColor;
@@ -21,6 +22,13 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   const audioFilePath = path.resolve(config.audio.path);
   const backgroundImagePath = path.resolve(config.image.path);
   const outVideoPath = path.resolve(config.outVideo.path);
+
+  const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
+  const backgroundImage = await parseImage(backgroundImageBuffer);
+  const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
+  const audioData = PCM_FORMAT.parseFunction(audioBuffer);
+  const normalizedAudioData = normalizeAudioData(audioData);
+
   const SAMPLE_RATE = config.audio.sampleRate;
   const FPS = config.outVideo.fps;
   const frequencyBuses =
@@ -28,18 +36,14 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
     [0, 100, 200, 500, 1000, 2000, 3000, 5000, 10000];
   const frequencyBusesWidth =
     (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
-    300;
+    backgroundImage.width * 0.3;
   const frequencyBusesHeight =
     (config.outVideo.spectrum && config.outVideo.spectrum.height) ||
-    300;
+    backgroundImage.height * 0.3;
   const frequencyBusesColor =
     (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
     invertColor(await getImageColor(backgroundImagePath));
 
-  const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
-  const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
-  const audioData = PCM_FORMAT.parseFunction(audioBuffer);
-  const normalizedAudioData = normalizeAudioData(audioData);
   const ffmpegVideoWriter = spawnFfmpegVideoWriter(audioFilePath, outVideoPath, FPS);
   ffmpegVideoWriter.on('exit', code => resolve(code));
 
