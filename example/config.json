@@ -7,7 +7,6 @@
     "sampleRate": 44100
   },
   "outVideo": {
-    "path": "example/media/out.mp4",
-    "fps": 60
+    "path": "example/media/out.mp4"
   }
 }
