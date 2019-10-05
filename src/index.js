@@ -37,7 +37,7 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   const FPS = config.outVideo.fps || 60;
   const frequencyBuses =
     (config.outVideo.spectrum && config.outVideo.spectrum.frequencyBuses) ||
-    [0, 100, 200, 500, 1000, 2000, 3000, 5000, 10000];
+    [0, 100, 200, 500, 1000, 1500, 2000, 3000, 5000, 10000];
   const frequencyBusesWidth =
     (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
     backgroundImage.width * 0.3;
