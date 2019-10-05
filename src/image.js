@@ -1,5 +1,7 @@
 const Writable = require('stream').Writable;
+const path = require('path');
 const PNG = require('pngjs').PNG;
+const ColorThief = require('colorthief');
 
 const drawRect = (imageDstBuffer, x, y, width, height, color = { red: 0, green: 0, blue: 0 }) => {
   for (var currY = y; currY < y + height; currY++) {
@@ -51,7 +53,17 @@ const createImageBuffer = (image) =>
     image.pack().pipe(imageStream);
   });
 
+const getImageColor = async (imagePath) => {
+  const color = await ColorThief.getColor(path.resolve(imagePath));
+  return { red: color[0], green: color[1], blue: color[2] };
+};
+
+const invertColor = (color) =>
+  ({ red: 255 - color.red, green: 255 - color.green, blue: 255 - color.blue });
+
 module.exports = {
   createVisualizerFrame,
-  createImageBuffer
+  createImageBuffer,
+  getImageColor,
+  invertColor
 };

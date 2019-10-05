@@ -6,6 +6,8 @@ const normalizeAudioData = require('./audio').normalizeAudioData;
 const getSmoothBusesSequences = require('./audio').getSmoothBusesSequences;
 const createVisualizerFrame = require('./image').createVisualizerFrame;
 const createImageBuffer = require('./image').createImageBuffer;
+const getImageColor = require('./image').getImageColor;
+const invertColor = require('./image').invertColor;
 const spawnFfmpegVideoWriter = require('./video').spawnFfmpegVideoWriter;
 
 const PCM_FORMAT = {
@@ -32,7 +34,7 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
     300;
   const frequencyBusesColor =
     (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
-    { red: 255, green: 0, blue: 0 };
+    invertColor(await getImageColor(backgroundImagePath));
 
   const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
   const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);

@@ -11,12 +11,7 @@
     "fps": 60,
     "spectrum": {
       "width": 300,
-      "height": 300,
-      "color": {
-        "red": 191,
-        "green": 180,
-        "blue": 76
-      }
+      "height": 300
     }
   }
 }
