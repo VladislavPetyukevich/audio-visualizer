@@ -3,8 +3,7 @@
     "path": "example/media/background.png"
   },
   "audio": {
-    "path": "example/media/audio.wav",
-    "sampleRate": 44100
+    "path": "example/media/audio.wav"
   },
   "outVideo": {
     "path": "example/media/out.mp4"

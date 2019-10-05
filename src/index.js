@@ -25,11 +25,15 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
 
   const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
   const backgroundImage = await parseImage(backgroundImageBuffer);
-  const audioBuffer = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
+  const audioReader = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
+  const audioBuffer = audioReader.audioBuffer;
+  const sampleRate = audioReader.sampleRate;
+  if (!sampleRate) {
+    throw new Error('ffmpeg didn\'t show audio sample rate');
+  }
   const audioData = PCM_FORMAT.parseFunction(audioBuffer);
   const normalizedAudioData = normalizeAudioData(audioData);
 
-  const SAMPLE_RATE = config.audio.sampleRate;
   const FPS = config.outVideo.fps || 60;
   const frequencyBuses =
     (config.outVideo.spectrum && config.outVideo.spectrum.frequencyBuses) ||
@@ -47,9 +51,9 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
   const ffmpegVideoWriter = spawnFfmpegVideoWriter(audioFilePath, outVideoPath, FPS);
   ffmpegVideoWriter.on('exit', code => resolve(code));
 
-  const audioDuration = audioData.length / SAMPLE_RATE;
+  const audioDuration = audioData.length / sampleRate;
   const framesCount = Math.trunc(audioDuration * FPS);
-  const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, SAMPLE_RATE);
+  const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, sampleRate);
 
   for (let i = 0; i < framesCount; i++) {
     const buses = {};

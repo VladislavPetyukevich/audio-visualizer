@@ -68,22 +68,28 @@ const normalizeAudioData = PCMData => PCMData.map(num => (num - 128) / 128);
 
 const spawnFfmpegAudioReader = (filename, format) => {
   const ffmpegProcess = spawn(ffmpeg.path, ['-i', filename, '-f', format, '-ac', '1', '-']);
-  ffmpegProcess.stderr.on('data', function (data) {
-    console.log('stderr: ' + data.toString());
-  });
   return ffmpegProcess;
 };
 
 const createAudioBuffer = (filename, format) =>
   new Promise((resolve, reject) => {
+    let sampleRate;
+    const sampleRateRegExp = /(\d+) Hz/m;
     const audioBuffers = [];
     const ffmpegAudioReader = spawnFfmpegAudioReader(filename, format);
+
+    ffmpegAudioReader.stderr.on('data', function (data) {
+      const match = data.toString().match(sampleRateRegExp);
+      if (!sampleRate && match) {
+        sampleRate = match[1];
+      }
+    });
     ffmpegAudioReader.stdout.on('data', function (chunkBuffer) {
       audioBuffers.push(chunkBuffer);
     });
     ffmpegAudioReader.stdout.on('end', function () {
-      const resultBuffer = Buffer.concat(audioBuffers);
-      resolve(resultBuffer);
+      const audioBuffer = Buffer.concat(audioBuffers);
+      resolve({ audioBuffer, sampleRate });
     });
   });
 
