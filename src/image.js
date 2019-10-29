@@ -32,7 +32,8 @@ const drawFrequencyBuses = (imageDstBuffer, frequencyBuses, width, height, color
 
 const createVisualizerFrame = async (backgroundImageBuffer, frequencyBuses, busesWidth, busesHeight, busesColor) => {
   const image = await parseImage(backgroundImageBuffer);
-  drawFrequencyBuses(image, frequencyBuses, busesWidth, busesHeight, busesColor);
+  const rgbBusesColor = (typeof busesColor === 'string') ? hexToRgb(busesColor) : busesColor;
+  drawFrequencyBuses(image, frequencyBuses, busesWidth, busesHeight, rgbBusesColor);
   return image;
 }
 
@@ -65,6 +66,14 @@ const getImageColor = async (imagePath) => {
 
 const invertColor = (color) =>
   ({ red: 255 - color.red, green: 255 - color.green, blue: 255 - color.blue });
+
+const hexToRgb = (hex) => {
+  const red = parseInt(hex.substring(1,3), 16);
+  const green = parseInt(hex.substring(3,5), 16);
+  const blue = parseInt(hex.substring(5,7), 16);
+  
+  return { red, green, blue };
+};
 
 module.exports = {
   createVisualizerFrame,
