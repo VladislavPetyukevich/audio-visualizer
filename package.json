@@ -2,19 +2,26 @@
   "name": "audio-visualizer",
   "version": "1.0.0",
   "description": "",
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node example/example.js",
-    "dev": "node-dev --respawn example/example.js"
+    "dev": "ts-node-dev --respawn --transpileOnly ./example/example.ts",
+    "prebuild": "rimraf dist",
+    "build": "tsc"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "node-dev": "^4.0.0"
+    "rimraf": "^3.0.0",
+    "ts-node-dev": "^1.0.0-pre.43",
+    "typescript": "^3.6.4"
   },
   "dependencies": {
+    "@types/ffmpeg-static": "^2.0.0",
+    "@types/node": "^12.12.3",
+    "@types/pngjs": "^3.3.2",
     "array-smooth": "^1.0.0",
     "colorthief": "^2.3.0",
     "ffmpeg-static": "^2.6.0",

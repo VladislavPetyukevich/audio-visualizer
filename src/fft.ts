@@ -1,7 +1,6 @@
-const fftUtil = require('fft-js').util;
-const ifft = require('fft-js').ifft;
+import { ifft, util as fftUtil } from 'fft-js';
 
-const brutForceFFTSignalLength = PCMDataLength => {
+const brutForceFFTSignalLength = (PCMDataLength: number) => {
   let exponent = 1;
   while (true) {
     const pow = Math.pow(2, exponent);
@@ -12,7 +11,7 @@ const brutForceFFTSignalLength = PCMDataLength => {
   }
 };
 
-const getFFT = (PCMData, sampleRate) => {
+export const getFFT = (PCMData: number[], sampleRate: number) => {
   const signal = [];
   const signalLength = brutForceFFTSignalLength(PCMData.length);
   for (let i = 0; i < signalLength; i += 2) {
@@ -31,7 +30,3 @@ const getFFT = (PCMData, sampleRate) => {
   });
   return both;
 }
-
-module.exports = {
-  getFFT
-};

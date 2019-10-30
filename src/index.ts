@@ -1,15 +1,8 @@
-const path = require('path');
-const fs = require('fs');
-const createAudioBuffer = require('./audio').createAudioBuffer;
-const bufferToUInt8 = require('./audio').bufferToUInt8;
-const normalizeAudioData = require('./audio').normalizeAudioData;
-const getSmoothBusesSequences = require('./audio').getSmoothBusesSequences;
-const createVisualizerFrame = require('./image').createVisualizerFrame;
-const parseImage = require('./image').parseImage;
-const createImageBuffer = require('./image').createImageBuffer;
-const getImageColor = require('./image').getImageColor;
-const invertColor = require('./image').invertColor;
-const spawnFfmpegVideoWriter = require('./video').spawnFfmpegVideoWriter;
+import path from 'path';
+import fs from 'fs';
+import { FrequencyBuses, createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothBusesSequences } from './audio';
+import { createVisualizerFrame, parseImage, createImageBuffer, getImageColor, invertColor, Color } from './image';
+import { spawnFfmpegVideoWriter } from './video';
 
 const PCM_FORMAT = {
   bit: 8,
@@ -18,7 +11,26 @@ const PCM_FORMAT = {
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 
-const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
+interface Config {
+  audio: {
+    path: string
+  };
+  image: {
+    path: string;
+  };
+  outVideo: {
+    path: string;
+    fps?: number;
+    spectrum?: {
+      frequencyBuses?: number[];
+      width?: number;
+      height?: number;
+      color?: Color | string;
+    }
+  }
+}
+
+export const renderAudioVisualizer = (config: Config) => new Promise<number>(async (resolve) => {
   const audioFilePath = path.resolve(config.audio.path);
   const backgroundImagePath = path.resolve(config.image.path);
   const outVideoPath = path.resolve(config.outVideo.path);
@@ -49,15 +61,15 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
     invertColor(await getImageColor(backgroundImagePath));
 
   const ffmpegVideoWriter = spawnFfmpegVideoWriter(audioFilePath, outVideoPath, FPS);
-  ffmpegVideoWriter.on('exit', code => resolve(code));
+  ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
   const audioDuration = audioData.length / sampleRate;
   const framesCount = Math.trunc(audioDuration * FPS);
   const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, sampleRate);
 
   for (let i = 0; i < framesCount; i++) {
-    const buses = {};
-    Object.keys(smoothBusesSequences).forEach(bus => buses[bus] = smoothBusesSequences[bus][i]);
+    const buses: FrequencyBuses = {};
+    Object.keys(smoothBusesSequences).forEach(bus => buses[+bus] = smoothBusesSequences[+bus][i]);
     const frameImage = await createVisualizerFrame(backgroundImageBuffer, buses, frequencyBusesWidth, frequencyBusesHeight, frequencyBusesColor);
     const frameImageBuffer = await createImageBuffer(frameImage);
     ffmpegVideoWriter.stdin.write(frameImageBuffer);
@@ -65,5 +77,3 @@ const renderAudioVisualizer = (config) => new Promise(async (resolve) => {
 
   ffmpegVideoWriter.stdin.end();
 });
-
-module.exports = renderAudioVisualizer;
