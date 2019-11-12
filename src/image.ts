@@ -1,3 +1,4 @@
+/// <reference path="./vendor-typings/colorthief.d.ts"/>
 import { Writable } from 'stream';
 import path from 'path';
 import { PNG } from 'pngjs';
@@ -10,7 +11,7 @@ export interface Color {
   blue: number;
 }
 
-const drawRect = (imageDstBuffer: PNG, x: number, y: number, width: number, height: number, color: Color) => {
+export const drawRect = (imageDstBuffer: PNG, x: number, y: number, width: number, height: number, color: Color) => {
   for (var currY = y; currY < y + height; currY++) {
     for (var currX = x; currX < x + width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
@@ -52,7 +53,7 @@ export const parseImage = (buffer: Buffer) =>
   });
 
 export const createImageBuffer = (image: PNG) =>
-  new Promise((resolve, reject) => {
+  new Promise<Buffer>((resolve) => {
     const imageBuffers: Buffer[] = [];
     const imageStream = new Writable();
     imageStream.write = function (chunkBuffer: Buffer) {
