@@ -1,6 +1,7 @@
+/// <reference path="./vendor-typings/fft-js.d.ts"/>
 import { ifft, util as fftUtil } from 'fft-js';
 
-const brutForceFFTSignalLength = (PCMDataLength: number) => {
+export const brutForceFFTSignalLength = (PCMDataLength: number) => {
   let exponent = 1;
   while (true) {
     const pow = Math.pow(2, exponent);
