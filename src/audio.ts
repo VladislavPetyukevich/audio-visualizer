@@ -11,12 +11,12 @@ export interface FrequencyBuses {
   [bus: number]: number;
 }
 
-export const getSmoothBusesSequences = (audioData: number[], framesCount: number, frequencyBuses: number[], sampleRate: number) => {
+export const getSmoothBusesSequences = (audioData: number[], framesCount: number, frequencyBusesNames: number[], sampleRate: number) => {
   const audioDataStep = Math.trunc(audioData.length / framesCount);
   const busesSequences: BusesSequences = {};
-  frequencyBuses.forEach(
+  frequencyBusesNames.forEach(
     (frequencyBus, index) => {
-      if (index === frequencyBuses.length - 1) {
+      if (index === frequencyBusesNames.length - 1) {
         return;
       }
       busesSequences[frequencyBus] = [];
@@ -26,7 +26,7 @@ export const getSmoothBusesSequences = (audioData: number[], framesCount: number
   for (let i = 0; i < audioData.length; i += audioDataStep) {
     const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
     const fft = getFFT(normalizedAudioFrame, sampleRate);
-    const buses = getFrequencyBuses(fft, frequencyBuses);
+    const buses = getFrequencyBuses(fft, frequencyBusesNames);
     Object.entries(buses).forEach(([bus, value]) => busesSequences[+bus].push(value));
   }
   const smoothBusesSequences: BusesSequences = {};
@@ -36,17 +36,17 @@ export const getSmoothBusesSequences = (audioData: number[], framesCount: number
   return smoothBusesSequences;
 };
 
-export const getFrequencyBuses = (FFTData: Array<{ frequency: number, magnitude: number }>, frequencyBuses: number[]) => {
+export const getFrequencyBuses = (FFTData: Array<{ frequency: number, magnitude: number }>, frequencyBusesNames: number[]) => {
   const result: FrequencyBuses = {};
-  frequencyBuses.forEach((bus, index) => {
-    if (index === frequencyBuses.length - 1) {
+  frequencyBusesNames.forEach((bus, index) => {
+    if (index === frequencyBusesNames.length - 1) {
       return;
     }
     result[bus] = 0
   });
   FFTData.forEach(data => {
-    frequencyBuses.forEach((bus, index) => {
-      const nextBus = frequencyBuses[index + 1];
+    frequencyBusesNames.forEach((bus, index) => {
+      const nextBus = frequencyBusesNames[index + 1];
       if (!nextBus) {
         return;
       }
