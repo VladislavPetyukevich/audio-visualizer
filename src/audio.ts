@@ -26,7 +26,7 @@ export const getSmoothBusesSequences = (audioData: number[], framesCount: number
   for (let i = 0; i < audioData.length; i += audioDataStep) {
     const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
     const fft = getFFT(normalizedAudioFrame, sampleRate);
-    const buses = getFrequencyBuses(fft, frequencyBusesNames);
+    const buses = ffftDataToBusesSequences(fft, frequencyBusesNames);
     Object.entries(buses).forEach(([bus, value]) => busesSequences[+bus].push(value));
   }
   const smoothBusesSequences: BusesSequences = {};
@@ -36,7 +36,7 @@ export const getSmoothBusesSequences = (audioData: number[], framesCount: number
   return smoothBusesSequences;
 };
 
-export const getFrequencyBuses = (FFTData: Array<{ frequency: number, magnitude: number }>, frequencyBusesNames: number[]) => {
+export const ffftDataToBusesSequences = (FFTData: Array<{ frequency: number, magnitude: number }>, frequencyBusesNames: number[]) => {
   const result: FrequencyBuses = {};
   frequencyBusesNames.forEach((bus, index) => {
     if (index === frequencyBusesNames.length - 1) {
