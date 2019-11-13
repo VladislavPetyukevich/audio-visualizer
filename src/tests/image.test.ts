@@ -1,8 +1,6 @@
-import { createSandbox, spy } from 'sinon';
 import { expect } from 'chai';
 import { PNG } from 'pngjs';
 import { drawRect, Color, createVisualizerFrame, createImageBuffer } from '../image';
-import { FrequencyBuses } from '../audio';
 import { frameImageData } from './data';
 
 describe('image', function () {
