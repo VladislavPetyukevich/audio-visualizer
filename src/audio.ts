@@ -1,3 +1,4 @@
+/// <reference path="./vendor-typings/array-smooth.d.ts"/>
 import { spawn } from 'child_process';
 import ffmpeg from 'ffmpeg-static';
 import { getFFT } from './fft';
@@ -74,7 +75,7 @@ export const bufferToUInt8 = (buffer: Buffer) => {
 
 export const normalizeAudioData = (PCMData: number[]) => PCMData.map(num => (num - 128) / 128);
 
-const spawnFfmpegAudioReader = (filename: string, format: string) => {
+export const spawnFfmpegAudioReader = (filename: string, format: string) => {
   const ffmpegProcess = spawn(ffmpeg.path, ['-i', filename, '-f', format, '-ac', '1', '-']);
   return ffmpegProcess;
 };
