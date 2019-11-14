@@ -30,5 +30,5 @@ renderAudioVisualizer(config)
   });
 ```
 
-## Output preview:
+## Output preview
 ![frame of output video](example/media/out-sample.png)
