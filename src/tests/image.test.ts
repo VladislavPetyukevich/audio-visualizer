@@ -26,7 +26,7 @@ describe('image', function () {
       expectedImageData[pixelIndex + 3] = 255; // alpha
     });
 
-    drawRect(imageDstBuffer as any, rectX, rectY, rectWidth, rectHeight, rectColor);
+    drawRect(imageDstBuffer as any, { x: rectX, y: rectY }, { width: rectWidth, height: rectHeight }, rectColor);
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
   });
 
@@ -36,8 +36,7 @@ describe('image', function () {
     const frame = await createVisualizerFrame(
       imageBuffer,
       { 0: 0.3, 50: 0.5 },
-      15,
-      20,
+      { width: 15, height: 20 },
       { red: 1, green: 1, blue: 1 }
     );
     expect(frame.data.toJSON().data).deep.equal(frameImageData);

@@ -70,7 +70,12 @@ export const renderAudioVisualizer = (config: Config) => new Promise<number>(asy
   for (let i = 0; i < framesCount; i++) {
     const buses: FrequencyBuses = {};
     Object.keys(smoothBusesSequences).forEach(bus => buses[+bus] = smoothBusesSequences[+bus][i]);
-    const frameImage = await createVisualizerFrame(backgroundImageBuffer, buses, frequencyBusesWidth, frequencyBusesHeight, frequencyBusesColor);
+    const frameImage = await createVisualizerFrame(
+      backgroundImageBuffer,
+      buses,
+      { width: frequencyBusesWidth, height: frequencyBusesHeight },
+      frequencyBusesColor
+    );
     const frameImageBuffer = await createImageBuffer(frameImage);
     ffmpegVideoWriter.stdin.write(frameImageBuffer);
   }

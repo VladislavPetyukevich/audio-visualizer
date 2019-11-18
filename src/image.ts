@@ -11,9 +11,19 @@ export interface Color {
   blue: number;
 }
 
-export const drawRect = (imageDstBuffer: PNG, x: number, y: number, width: number, height: number, color: Color) => {
-  for (var currY = y; currY < y + height; currY++) {
-    for (var currX = x; currX < x + width; currX++) {
+interface Position {
+  x: number;
+  y: number;
+}
+
+interface Size {
+  width: number;
+  height: number;
+}
+
+export const drawRect = (imageDstBuffer: PNG, position: Position, size: Size, color: Color) => {
+  for (var currY = position.y; currY < position.y + size.height; currY++) {
+    for (var currX = position.x; currX < position.x + size.width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
 
       imageDstBuffer.data[idx] = color.red;
@@ -24,24 +34,24 @@ export const drawRect = (imageDstBuffer: PNG, x: number, y: number, width: numbe
   }
 };
 
-const drawFrequencyBuses = (imageDstBuffer: PNG, frequencyBuses: FrequencyBuses, width: number, height: number, color: Color) => {
+const drawFrequencyBuses = (imageDstBuffer: PNG, frequencyBuses: FrequencyBuses, size: Size, color: Color) => {
   const busesCount = Object.keys(frequencyBuses).length;
-  const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - width / 2);
-  const busWidth = width / busesCount;
+  const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - size.width / 2);
+  const busWidth = size.width / busesCount;
   const margin = busWidth * 0.3;
   Object.entries(frequencyBuses).forEach(([bus, value], index) => {
     const rectX = paddingLeft + busWidth * index + (margin / 2);
     const rectY = 0;
     const rectWidth = busWidth - margin;
-    const rectHeight = height * value;
-    drawRect(imageDstBuffer, rectX, rectY, rectWidth, rectHeight, color);
+    const rectHeight = size.height * value;
+    drawRect(imageDstBuffer, { x: rectX, y: rectY }, { width: rectWidth, height: rectHeight }, color);
   });
 };
 
-export const createVisualizerFrame = async (backgroundImageBuffer: Buffer, frequencyBuses: FrequencyBuses, busesWidth: number, busesHeight: number, busesColor: Color | string) => {
+export const createVisualizerFrame = async (backgroundImageBuffer: Buffer, frequencyBuses: FrequencyBuses, size: Size, busesColor: Color | string) => {
   const image = await parseImage(backgroundImageBuffer);
   const rgbBusesColor = (typeof busesColor === 'string') ? hexToRgb(busesColor) : busesColor;
-  drawFrequencyBuses(image, frequencyBuses, busesWidth, busesHeight, rgbBusesColor);
+  drawFrequencyBuses(image, frequencyBuses, size, rgbBusesColor);
   return image;
 }
 
