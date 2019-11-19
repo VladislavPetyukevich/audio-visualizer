@@ -4,14 +4,14 @@ import { FrequencyBuses, createAudioBuffer, bufferToUInt8, normalizeAudioData, g
 import { createVisualizerFrame, parseImage, createImageBuffer, getImageColor, invertColor, Color } from './image';
 import { spawnFfmpegVideoWriter } from './video';
 
-const PCM_FORMAT = {
+export const PCM_FORMAT = {
   bit: 8,
   sign: 'u',
   parseFunction: bufferToUInt8
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 
-interface Config {
+export interface Config {
   audio: {
     path: string
   };
