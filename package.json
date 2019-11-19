@@ -17,12 +17,18 @@
     "@types/chai": "^4.2.4",
     "@types/mocha": "^5.2.7",
     "chai": "^4.2.0",
+    "husky": "^3.1.0",
     "mocha": "^6.2.2",
     "rimraf": "^3.0.0",
     "sinon": "^7.5.0",
     "ts-node": "^8.5.0",
     "ts-node-dev": "^1.0.0-pre.43",
     "typescript": "^3.7.2"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm test"
+    }
   },
   "dependencies": {
     "@types/ffmpeg-static": "^2.0.0",
