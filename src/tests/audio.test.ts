@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { Readable, Writable, Pipe } from 'stream';
+import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 import {
   getSmoothBusesSequences,
   ffftDataToBusesSequences,
@@ -7,9 +8,25 @@ import {
   normalizeAudioData,
   spawnFfmpegAudioReader
 } from '../audio';
-import { childProcessStream } from './childProcessSandbox';
+import { createSandbox } from 'sinon';
+
+let childProcessStream = {
+  stdin: new Writable(),
+  stderr: new Readable(),
+};
+
+const videoSandbox = createSandbox();
 
 describe('audio', function () {
+
+  this.beforeAll(function () {
+    videoSandbox.stub(child_process, 'spawn').returns(childProcessStream as ChildProcessWithoutNullStreams);
+  });
+
+  this.afterAll(function () {
+    videoSandbox.restore();
+  });
+
   it('getSmoothBusesSequences', function () {
     const result = getSmoothBusesSequences(
       [1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5],
