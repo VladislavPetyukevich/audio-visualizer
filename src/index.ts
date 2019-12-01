@@ -60,7 +60,11 @@ export const renderAudioVisualizer = (config: Config) => new Promise<number>(asy
     (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
     invertColor(await getImageColor(backgroundImagePath));
 
-  const ffmpegVideoWriter = spawnFfmpegVideoWriter(audioFilePath, outVideoPath, FPS);
+  const ffmpegVideoWriter = spawnFfmpegVideoWriter({
+    audioFilename: audioFilePath,
+    videoFileName: outVideoPath,
+    fps: FPS
+  });
   ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
   const audioDuration = audioData.length / sampleRate;

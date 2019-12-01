@@ -30,11 +30,11 @@ describe('video', function () {
     childProcessStream.stdin = childProcessWritableStream;
     childProcessStream.stderr = childProcessReadableStream;
 
-    spawnFfmpegVideoWriter('test', 'test', 11);
+    spawnFfmpegVideoWriter({ audioFilename: 'test', videoFileName: 'test', fps: 11 });
   });
 
   it('spawnFfmpegVideoWriter returns truthy value', function () {
-    const result = spawnFfmpegVideoWriter('test', 'test', 11);
+    const result = spawnFfmpegVideoWriter({ audioFilename: 'test', videoFileName: 'test', fps: 11 });
     expect(!!result).equal(true);
   });
 });
