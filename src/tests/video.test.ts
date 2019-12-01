@@ -21,19 +21,15 @@ describe('video', function () {
     videoSandbox.restore();
   });
 
-  it('spawnFfmpegVideoWriter read from stderr', function (done) {
+  it('spawnFfmpegVideoWriter returns truthy value', function () {
     const childProcessReadableStream = new Readable();
-    childProcessReadableStream._read = () => { done(); };
+    childProcessReadableStream._read = () => { };
     const childProcessWritableStream = new Writable();
     (<Pipe>childProcessWritableStream.pipe) = () => childProcessWritableStream;
 
     childProcessStream.stdin = childProcessWritableStream;
     childProcessStream.stderr = childProcessReadableStream;
 
-    spawnFfmpegVideoWriter({ audioFilename: 'test', videoFileName: 'test', fps: 11 });
-  });
-
-  it('spawnFfmpegVideoWriter returns truthy value', function () {
     const result = spawnFfmpegVideoWriter({ audioFilename: 'test', videoFileName: 'test', fps: 11 });
     expect(!!result).equal(true);
   });

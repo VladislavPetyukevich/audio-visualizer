@@ -14,7 +14,11 @@ const millisecondsToTime = (milliseconds: number) => {
   return `${hoursFormated}:${minutesFormated}:${secondsFormated}`;
 };
 
-renderAudioVisualizer(config)
+const onProgress = (progressPercent: number) => {
+  console.log(`progress: ${progressPercent} %`);
+};
+
+renderAudioVisualizer(config, onProgress)
   .then((exitCode: number) => {
     console.log(`exited with code: ${exitCode}`);
     console.log(`rendered in: `, millisecondsToTime(+new Date() - +startTime));

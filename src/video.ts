@@ -5,6 +5,7 @@ interface FfmpegVideoWriterConfig {
   audioFilename: string;
   videoFileName: string;
   fps: number;
+  onStderr?: (data: any) => any;
 }
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
@@ -17,8 +18,27 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   ];
   const ffmpeg = spawn(ffmpegPath, args);
   ffmpeg.stdin.pipe(process.stdout);
-  ffmpeg.stderr.on('data', function (data) {
-    console.log('stderr: ' + data.toString());
-  });
+  if (config.onStderr) {
+    ffmpeg.stderr.on('data', config.onStderr);
+  }
   return ffmpeg;
 };
+
+export const getProgress = (onProgress: (currentFrame: number) => any) =>
+  (stderrOutput: Buffer) => {
+    const matchResult = stderrOutput.toString().match(/frame=[ ]+(\d+)/);
+    if (!matchResult) {
+      return;
+    }
+    const currentFrame = +matchResult[1];
+    if (isNaN(currentFrame)) {
+      return;
+    }
+    onProgress(currentFrame);
+  };
+
+export const calculateProgress = (framesCount: number, callback: (progress: number) => any) =>
+  (currentFrame: number) =>
+    callback(
+      +(currentFrame / framesCount * 100).toFixed(2)
+    );
