@@ -7,10 +7,10 @@ Only WAV audio and PNG image format is supported now.
 const renderAudioVisualizer = require('audio-visualizer').renderAudioVisualizer;
 const config = {
   image: {
-    path: 'media/background.png'
+    path: 'media/background.png' // Only PNG is supported now
   },
   audio: {
-    path: 'media/audio.wav'
+    path: 'media/audio.wav' // Only WAV is supported now
   },
   outVideo: {
     path: 'media/out.mp4',
