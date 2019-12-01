@@ -24,7 +24,11 @@ const config = {
   }
 };
 
-renderAudioVisualizer(config)
+const onProgress = (progressPercent: number) => {
+  console.log(`progress: ${progressPercent} %`);
+};
+
+renderAudioVisualizer(config, onProgress)
   .then((exitCode) => {
     console.log(`exited with code: ${exitCode}`);
   });
