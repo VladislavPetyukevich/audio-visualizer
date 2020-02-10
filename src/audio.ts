@@ -32,7 +32,7 @@ export const getSmoothBusesSequences = (audioData: number[], framesCount: number
   }
   const smoothBusesSequences: BusesSequences = {};
   Object.entries(busesSequences).forEach(
-    ([bus, sequence]) => smoothBusesSequences[+bus] = smooth(busesSequences[+bus], 1)
+    ([bus]) => smoothBusesSequences[+bus] = smooth(busesSequences[+bus], 2)
   );
   return smoothBusesSequences;
 };
