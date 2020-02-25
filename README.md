@@ -16,9 +16,8 @@ const config = {
     path: 'media/out.mp4',
     fps: 25, // Default value: 60
     spectrum: { // Audio spectrum configuration. Optional.
-      frequencyBuses: [0, 100, 200, 500, 1000], // Default value: [0, 100, 200, 500, 1000, 1500, 2000, 3000, 5000, 10000]
-      width: 300, // Default value: 30% of background image width
-      height: 300, // Default value: 30% of background image height
+      width: 300, // Default value: 40% of background image width
+      height: 300, // Default value: 10% of background image height
       color: '#cccc99' // Default value: inverted color of background image
     }
   }

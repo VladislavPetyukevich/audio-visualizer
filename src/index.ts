@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { FrequencyBuses, createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothBusesSequences } from './audio';
+import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums } from './audio';
 import { createVisualizerFrame, parseImage, createImageBuffer, getImageColor, invertColor, Color } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress } from './video';
 
@@ -22,7 +22,6 @@ export interface Config {
     path: string;
     fps?: number;
     spectrum?: {
-      frequencyBuses?: number[];
       width?: number;
       height?: number;
       color?: Color | string;
@@ -48,22 +47,19 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const normalizedAudioData = normalizeAudioData(audioData);
 
     const FPS = config.outVideo.fps || 60;
-    const frequencyBuses =
-      (config.outVideo.spectrum && config.outVideo.spectrum.frequencyBuses) ||
-      [0, 100, 200, 500, 1000, 1500, 2000, 3000, 5000, 10000];
-    const frequencyBusesWidth =
+    const spectrumWidth =
       (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
-      backgroundImage.width * 0.3;
-    const frequencyBusesHeight =
+      backgroundImage.width * 0.4;
+    const spectrumHeight =
       (config.outVideo.spectrum && config.outVideo.spectrum.height) ||
-      backgroundImage.height * 0.3;
-    const frequencyBusesColor =
+      backgroundImage.height * 0.1;
+    const spectrumColor =
       (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
       invertColor(await getImageColor(backgroundImagePath));
 
     const audioDuration = audioData.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
-    const smoothBusesSequences = getSmoothBusesSequences(normalizedAudioData, framesCount, frequencyBuses, sampleRate);
+    const spectrums = getSmoothSpectrums(normalizedAudioData, framesCount, sampleRate);
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
@@ -74,13 +70,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
     for (let i = 0; i < framesCount; i++) {
-      const buses: FrequencyBuses = {};
-      Object.keys(smoothBusesSequences).forEach(bus => buses[+bus] = smoothBusesSequences[+bus][i]);
       const frameImage = await createVisualizerFrame(
         backgroundImageBuffer,
-        buses,
-        { width: frequencyBusesWidth, height: frequencyBusesHeight },
-        frequencyBusesColor
+        spectrums[i],
+        { width: spectrumWidth, height: spectrumHeight },
+        spectrumColor
       );
       const frameImageBuffer = await createImageBuffer(frameImage);
       ffmpegVideoWriter.stdin.write(frameImageBuffer);

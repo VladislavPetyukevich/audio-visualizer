@@ -2,11 +2,11 @@ import { expect } from 'chai';
 import { Readable, Writable, Pipe } from 'stream';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 import {
-  getSmoothBusesSequences,
-  ffftDataToBusesSequences,
   bufferToUInt8,
   normalizeAudioData,
-  spawnFfmpegAudioReader
+  spawnFfmpegAudioReader,
+  smoothSpectrums,
+  getSmoothSpectrums
 } from '../audio';
 import { createSandbox } from 'sinon';
 
@@ -25,31 +25,6 @@ describe('audio', function () {
 
   this.afterAll(function () {
     videoSandbox.restore();
-  });
-
-  it('getSmoothBusesSequences', function () {
-    const result = getSmoothBusesSequences(
-      [1, 0.5, 1, 0.5, 1, 0.5, 1, 0.5],
-      1,
-      [0, 0.3, 1],
-      1
-    );
-    expect(result).property('0');
-    expect(result).property('0.3');
-    expect(result[0]).an('array');
-    expect(result[0.3]).an('array');
-  });
-
-  it('ffftDataToBusesSequences', function () {
-    const result = ffftDataToBusesSequences(
-      [
-        { frequency: 0.2, magnitude: 0.3 },
-        { frequency: 0.3, magnitude: 0.2 }
-      ],
-      [0, 0.3, 1]
-    );
-    const expected = { 0: 0.3, 0.3: 0.2 };
-    expect(result).deep.equal(expected);
   });
 
   it('bufferToUInt8', function () {
@@ -80,5 +55,17 @@ describe('audio', function () {
     });
 
     childProcessStream.stderr.emit('data', 'some data');
+  });
+
+  it('smoothSpectrums', () => {
+    const result = smoothSpectrums([[1, 0, 3], [40, 50, 60]]);
+    const expected = [[0.5125, 0.5, 0.525], [0.5125, 0.5, 0.525]];
+    expect(result).deep.equal(expected);
+  });
+
+  it('getSmoothSpectrums', () => {
+    const result = getSmoothSpectrums([1, 2, 3, 4, 5, 6, 7, 8], 2, 2);
+    const expected = [[0.6923076923076923, 1], [0.6923076923076923, 1]];
+    expect(result).deep.equal(expected);
   });
 });

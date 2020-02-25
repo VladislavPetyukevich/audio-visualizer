@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { brutForceFFTSignalLength, getFFT } from '../fft';
+import { brutForceFFTSignalLength, getSpectrum } from '../dsp';
 
 describe('fft', function () {
   it('brutForceFFTSignalLength', function () {
@@ -15,15 +15,12 @@ describe('fft', function () {
     );
   });
 
-  it('getFFT', function () {
+  it('getSpectrum', function () {
     var signal = [1, 0, 0, 0, 1, 0, 0, 0];
     const sampleRate = 8000;
-    const fft = [
-      { frequency: 0, magnitude: 0.5 },
-      { frequency: 2000, magnitude: 0 }
-    ];
+    const fft = [8.317766166719343, 0, 11.090354888959125, 0];
 
-    const result = getFFT(signal, sampleRate);
+    const result = getSpectrum(signal, sampleRate);
     expect(result).deep.equal(fft);
   });
 });

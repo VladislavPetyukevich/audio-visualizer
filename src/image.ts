@@ -3,7 +3,6 @@ import { Writable } from 'stream';
 import path from 'path';
 import { PNG } from 'pngjs';
 import ColorThief from 'colorthief';
-import { FrequencyBuses } from './audio';
 
 export interface Color {
   red: number;
@@ -34,24 +33,26 @@ export const drawRect = (imageDstBuffer: PNG, position: Position, size: Size, co
   }
 };
 
-const drawFrequencyBuses = (imageDstBuffer: PNG, frequencyBuses: FrequencyBuses, size: Size, color: Color) => {
-  const busesCount = Object.keys(frequencyBuses).length;
+const drawSpectrum = (imageDstBuffer: PNG, spectrum: number[], size: Size, color: Color) => {
   const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - size.width / 2);
-  const busWidth = size.width / busesCount;
-  const margin = busWidth * 0.3;
-  Object.entries(frequencyBuses).forEach(([bus, value], index) => {
-    const rectX = paddingLeft + busWidth * index + (margin / 2);
-    const rectY = 0;
-    const rectWidth = busWidth - margin;
-    const rectHeight = size.height * value;
-    drawRect(imageDstBuffer, { x: rectX, y: rectY }, { width: rectWidth, height: rectHeight }, color);
-  });
+  const busWidth = size.width / spectrum.length;
+
+  for (let spectrumX = 0; spectrumX < spectrum.length; spectrumX++) {
+    const spectrumValue = spectrum[spectrumX];
+    if ((spectrumValue > 1) || (spectrumValue < 0)) {
+      throw new Error('Spectrum values must be in range from 0 to 1');
+    }
+
+    const rectX = paddingLeft + busWidth * spectrumX;
+    const rectHeight = size.height * spectrumValue;
+    drawRect(imageDstBuffer, { x: rectX, y: 0 }, { width: busWidth, height: rectHeight }, color);
+  }
 };
 
-export const createVisualizerFrame = async (backgroundImageBuffer: Buffer, frequencyBuses: FrequencyBuses, size: Size, busesColor: Color | string) => {
+export const createVisualizerFrame = async (backgroundImageBuffer: Buffer, spectrum: number[], size: Size, color: Color | string) => {
   const image = await parseImage(backgroundImageBuffer);
-  const rgbBusesColor = (typeof busesColor === 'string') ? hexToRgb(busesColor) : busesColor;
-  drawFrequencyBuses(image, frequencyBuses, size, rgbBusesColor);
+  const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+  drawSpectrum(image, spectrum, size, rgbSpectrumColor);
   return image;
 }
 

@@ -1,64 +1,53 @@
 /// <reference path="./vendor-typings/array-smooth.d.ts"/>
 import { spawn } from 'child_process';
 import ffmpeg from 'ffmpeg-static';
-import { getFFT } from './fft';
+import { getSpectrum } from './dsp';
 import smooth from 'array-smooth';
 
-interface BusesSequences {
-  [frequencyBus: number]: number[];
-}
-
-export interface FrequencyBuses {
-  [bus: number]: number;
-}
-
-export const getSmoothBusesSequences = (audioData: number[], framesCount: number, frequencyBusesNames: number[], sampleRate: number) => {
-  const audioDataStep = Math.trunc(audioData.length / framesCount);
-  const busesSequences: BusesSequences = {};
-  frequencyBusesNames.forEach(
-    (frequencyBus, index) => {
-      if (index === frequencyBusesNames.length - 1) {
-        return;
-      }
-      busesSequences[frequencyBus] = [];
-    }
-  );
-
-  for (let i = 0; i < audioData.length; i += audioDataStep) {
-    const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
-    const fft = getFFT(normalizedAudioFrame, sampleRate);
-    const buses = ffftDataToBusesSequences(fft, frequencyBusesNames);
-    Object.entries(buses).forEach(([bus, value]) => busesSequences[+bus].push(value));
+export const smoothSpectrums = (spectrums: number[][]) => {
+  const scaleValues = (values: number[]) => {
+    const maxValue = Math.max.apply(null, values);
+    return values.map(value => value / maxValue);
+  };
+  const lengths = spectrums.map(spectrum => spectrum.length);
+  const maxLength = Math.max.apply(null, lengths);
+  const buses: number[][] = [];
+  for (let bus = 0; bus < maxLength; bus++) {
+    buses[bus] = [];
   }
-  const smoothBusesSequences: BusesSequences = {};
-  Object.entries(busesSequences).forEach(
-    ([bus]) => smoothBusesSequences[+bus] = smooth(smooth(busesSequences[+bus], 2), 2)
-  );
-  return smoothBusesSequences;
+
+  spectrums.forEach((spectrum) => {
+    for (let bus = 0; bus < maxLength; bus++) {
+      buses[bus].push(spectrum[bus] || 0);
+    }
+  });
+
+  const smoothBuses = buses.map(bus => (smooth(smooth(scaleValues(bus), 2), 2)));
+  const smoothSpectrums: number[][] = [];
+  for (let spectrumIndex = 0; spectrumIndex < spectrums.length; spectrumIndex++) {
+    smoothSpectrums[spectrumIndex] = [];
+  }
+
+  for (let spectrumIndex = 0; spectrumIndex < spectrums.length; spectrumIndex++) {
+    for (let bus = 0; bus < maxLength; bus++) {
+      smoothSpectrums[spectrumIndex].push(smoothBuses[bus][spectrumIndex]);
+    }
+  }
+  return smoothSpectrums;
 };
 
-export const ffftDataToBusesSequences = (FFTData: Array<{ frequency: number, magnitude: number }>, frequencyBusesNames: number[]) => {
-  const result: FrequencyBuses = {};
-  frequencyBusesNames.forEach((bus, index) => {
-    if (index === frequencyBusesNames.length - 1) {
-      return;
-    }
-    result[bus] = 0
-  });
-  FFTData.forEach(data => {
-    frequencyBusesNames.forEach((bus, index) => {
-      const nextBus = frequencyBusesNames[index + 1];
-      if (!nextBus) {
-        return;
-      }
-      if ((data.frequency >= bus) && (data.frequency < nextBus)) {
-        result[bus] = (result[bus]) ? (result[bus] + data.magnitude) / 2 : data.magnitude;
-      }
-    });
+export const getSmoothSpectrums = (audioData: number[], framesCount: number, sampleRate: number) => {
+  const audioDataStep = Math.trunc(audioData.length / framesCount);
 
-  });
+  const spectrums: number[][] = [];
+  for (let i = 0; i < audioData.length; i += audioDataStep) {
+    const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
+    const spectrum = getSpectrum(normalizedAudioFrame, sampleRate);
 
-  return result;
+    spectrums.push(spectrum);
+  }
+
+  return smoothSpectrums(spectrums);
 };
 
 export const bufferToUInt8 = (buffer: Buffer) => {
