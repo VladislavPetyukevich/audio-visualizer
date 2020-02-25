@@ -11,13 +11,12 @@ export const brutForceFFTSignalLength = (PCMDataLength: number) => {
   }
 };
 
-export const getSpectrum = (PCMData: number[], sampleRate: number) => {
-  const signal = [];
+export const getSpectrum = (PCMData: number[]) => {
   const signalLength = brutForceFFTSignalLength(PCMData.length);
-  for (let i = 0; i < signalLength; i++) {
-    signal.push(PCMData[i]);
-  }
-  const spectrumAnalyzer = createSpectrumAnalyzer(signalLength, sampleRate);
+  const signalStartIndex = Math.trunc(PCMData.length / 2 - signalLength / 2);
+  const signal = PCMData.slice(signalStartIndex, signalStartIndex + signalLength);
+
+  const spectrumAnalyzer = createSpectrumAnalyzer(signalLength);
   const spectrum = spectrumAnalyzer(signal);
   for (let i = 0; i < spectrum.length; i++) {
     // attenuates low freqs and boosts highs

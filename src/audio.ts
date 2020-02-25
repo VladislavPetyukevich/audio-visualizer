@@ -42,7 +42,7 @@ export const getSmoothSpectrums = (audioData: number[], framesCount: number, sam
   const spectrums: number[][] = [];
   for (let i = 0; i < audioData.length; i += audioDataStep) {
     const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
-    const spectrum = getSpectrum(normalizedAudioFrame, sampleRate);
+    const spectrum = getSpectrum(normalizedAudioFrame);
 
     spectrums.push(spectrum);
   }

@@ -15,10 +15,10 @@ const sandbox = createSandbox();
 describe('index', function () {
 
   this.beforeAll(function () {
-    sandbox.stub(fs, 'readFileSync').returns(Buffer.from([1]));
+    sandbox.stub(fs, 'readFileSync').returns(Buffer.from([1, 1]));
     sandbox.stub(image, 'parseImage').returns(new Promise(resolve => resolve(new PNG({ width: 100, height: 50 }))));
     sandbox.stub(audio, 'createAudioBuffer').returns(
-      new Promise(resolve => resolve({ audioBuffer: Buffer.from([1]), sampleRate: 1 }))
+      new Promise(resolve => resolve({ audioBuffer: Buffer.from([1, 1]), sampleRate: 2 }))
     );
     sandbox.stub(image, 'getImageColor').returns(new Promise(resolve => resolve({ red: 0, green: 0, blue: 0 })));
 

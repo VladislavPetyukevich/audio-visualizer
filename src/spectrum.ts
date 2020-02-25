@@ -1,4 +1,4 @@
-export const createSpectrumAnalyzer = (bufferSize: number, sampleRate: number) => {
+export const createSpectrumAnalyzer = (bufferSize: number) => {
   const real = new Float64Array(bufferSize);
   const imag = new Float64Array(bufferSize);
   const reverseTable = new Uint32Array(bufferSize);

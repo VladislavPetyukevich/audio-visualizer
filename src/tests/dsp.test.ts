@@ -17,10 +17,9 @@ describe('fft', function () {
 
   it('getSpectrum', function () {
     var signal = [1, 0, 0, 0, 1, 0, 0, 0];
-    const sampleRate = 8000;
     const fft = [8.317766166719343, 0, 11.090354888959125, 0];
 
-    const result = getSpectrum(signal, sampleRate);
+    const result = getSpectrum(signal);
     expect(result).deep.equal(fft);
   });
 });
