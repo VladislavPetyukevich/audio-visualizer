@@ -4,7 +4,10 @@ import ffmpeg from 'ffmpeg-static';
 import { getSpectrum } from './dsp';
 import smooth from 'array-smooth';
 
-export const smoothSpectrums = (spectrums: number[][]) => {
+export const getSmoothBuses = (busValues: number[], iterations: number) =>
+  Array.from({ length: iterations }).reduce((accum: number[]) => smooth(accum, 2), busValues);
+
+export const smoothSpectrums = (spectrums: number[][], FPS: number) => {
   const scaleValues = (values: number[]) => {
     const maxValue = Math.max.apply(null, values);
     return values.map(value => value / maxValue);
@@ -22,7 +25,7 @@ export const smoothSpectrums = (spectrums: number[][]) => {
     }
   });
 
-  const smoothBuses = buses.map(bus => (smooth(smooth(scaleValues(bus), 2), 2)));
+  const smoothBuses = buses.map(bus => getSmoothBuses(scaleValues(bus), Math.trunc(FPS / 30) || 1));
   const smoothSpectrums: number[][] = [];
   for (let spectrumIndex = 0; spectrumIndex < spectrums.length; spectrumIndex++) {
     smoothSpectrums[spectrumIndex] = [];
@@ -36,9 +39,7 @@ export const smoothSpectrums = (spectrums: number[][]) => {
   return smoothSpectrums;
 };
 
-export const getSmoothSpectrums = (audioData: number[], framesCount: number, sampleRate: number) => {
-  const audioDataStep = Math.trunc(audioData.length / framesCount);
-
+export const getSmoothSpectrums = (audioData: number[], FPS: number, audioDataStep: number) => {
   const spectrums: number[][] = [];
   for (let i = 0; i < audioData.length; i += audioDataStep) {
     const normalizedAudioFrame = audioData.slice(i, i + audioDataStep);
@@ -47,7 +48,7 @@ export const getSmoothSpectrums = (audioData: number[], framesCount: number, sam
     spectrums.push(spectrum);
   }
 
-  return smoothSpectrums(spectrums);
+  return smoothSpectrums(spectrums, FPS);
 };
 
 export const bufferToUInt8 = (buffer: Buffer) => {

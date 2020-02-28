@@ -59,7 +59,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const audioDuration = audioData.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
-    const spectrums = getSmoothSpectrums(normalizedAudioData, framesCount, sampleRate);
+    const audioDataStep = Math.trunc(audioData.length / framesCount);
+    const spectrums = getSmoothSpectrums(normalizedAudioData, FPS, audioDataStep);
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
