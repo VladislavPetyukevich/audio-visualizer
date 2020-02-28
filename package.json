@@ -4,11 +4,15 @@
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
     "test": "mocha -r ts-node/register src/**/*.test.ts",
     "dev": "ts-node-dev --respawn --transpileOnly ./example/example.ts",
     "prebuild": "rimraf dist",
-    "build": "tsc"
+    "build": "tsc -m CommonJS"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +23,7 @@
     "chai": "^4.2.0",
     "husky": "^3.1.0",
     "mocha": "^6.2.2",
-    "rimraf": "^3.0.0",
+    "rimraf": "^3.0.2",
     "sinon": "^7.5.0",
     "ts-node": "^8.5.0",
     "ts-node-dev": "^1.0.0-pre.43",
