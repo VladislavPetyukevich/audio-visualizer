@@ -1,7 +1,7 @@
 /// <reference path="./vendor-typings/colorthief.d.ts"/>
-import { Writable } from 'stream';
+import { decode, encode, BmpDecoder } from 'bmp-js';
+import Jimp from 'jimp';
 import path from 'path';
-import { PNG } from 'pngjs';
 import ColorThief from 'colorthief';
 
 export interface Color {
@@ -20,7 +20,7 @@ interface Size {
   height: number;
 }
 
-export const drawRect = (imageDstBuffer: PNG, position: Position, size: Size, color: Color) => {
+export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: Size, color: Color) => {
   for (var currY = position.y; currY < position.y + size.height; currY++) {
     for (var currX = position.x; currX < position.x + size.width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
@@ -33,7 +33,7 @@ export const drawRect = (imageDstBuffer: PNG, position: Position, size: Size, co
   }
 };
 
-const drawSpectrum = (imageDstBuffer: PNG, spectrum: number[], size: Size, color: Color) => {
+const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size, color: Color) => {
   const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - size.width / 2);
   const busWidth = size.width / spectrum.length;
 
@@ -49,35 +49,25 @@ const drawSpectrum = (imageDstBuffer: PNG, spectrum: number[], size: Size, color
   }
 };
 
-export const createVisualizerFrame = async (backgroundImageBuffer: Buffer, spectrum: number[], size: Size, color: Color | string) => {
-  const image = await parseImage(backgroundImageBuffer);
+export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, color: Color | string) => {
+  const image = Object.assign({}, backgroundImageBuffer);
+  image.data = Buffer.from(image.data);
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
   drawSpectrum(image, spectrum, size, rgbSpectrumColor);
   return image;
-}
+};
 
-export const parseImage = (buffer: Buffer) =>
-  new Promise<PNG>((resolve, reject) => {
-    new PNG({ filterType: 4 }).parse(buffer, function (error, dstBuffer) {
-      resolve(dstBuffer);
+export const convertToBmp = async (filePath: string) =>
+  new Promise<Buffer>(async resolve => {
+    const image = await Jimp.read(filePath);
+    image.getBuffer("image/bmp", (err, value) => {
+      resolve(value);
     });
   });
 
-export const createImageBuffer = (image: PNG) =>
-  new Promise<Buffer>((resolve) => {
-    const imageBuffers: Buffer[] = [];
-    const imageStream = new Writable();
-    imageStream.write = function (chunkBuffer: Buffer) {
-      imageBuffers.push(chunkBuffer);
-      return true;
-    }
-    imageStream.end = function () {
-      const resultBuffer = Buffer.concat(imageBuffers);
-      resolve(resultBuffer);
-    }
+export const parseImage = (buffer: Buffer) => decode(buffer);
 
-    image.pack().pipe(imageStream);
-  });
+export const createImageBuffer = (image: BmpDecoder) => encode(image).data;
 
 export const getImageColor = async (imagePath: string) => {
   const color = await ColorThief.getColor(path.resolve(imagePath));

@@ -1,6 +1,6 @@
 import { expect } from 'chai';
-import { PNG } from 'pngjs';
-import { drawRect, Color, createVisualizerFrame, createImageBuffer } from '../image';
+import path from 'path';
+import { drawRect, Color, createVisualizerFrame, parseImage, convertToBmp } from '../image';
 
 describe('image', function () {
   it('drawRect', function () {
@@ -30,14 +30,15 @@ describe('image', function () {
   });
 
   it('createVisualizerFrame', async function () {
-    const image = new PNG({ width: 100, height: 50 });
-    const imageBuffer = await createImageBuffer(image);
+    const backgroundImagePath = path.resolve('example/media/background.png');
+    const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
+    const backgroundImage = parseImage(backgroundImageBmpBuffer);
     const frame = await createVisualizerFrame(
-      imageBuffer,
+      backgroundImage,
       [0.5, 0, 1],
       { width: 15, height: 20 },
       { red: 1, green: 1, blue: 1 }
     );
-    expect(frame.data.toJSON().data.length).equal(20000);
+    expect(frame.data.toJSON().data.length).equal(1090560);
   });
 });

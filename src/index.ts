@@ -1,8 +1,8 @@
 import path from 'path';
-import fs from 'fs';
 import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums } from './audio';
-import { createVisualizerFrame, parseImage, createImageBuffer, getImageColor, invertColor, Color } from './image';
+import { createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress } from './video';
+import { parseImage } from './image';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -35,8 +35,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImagePath = path.resolve(config.image.path);
     const outVideoPath = path.resolve(config.outVideo.path);
 
-    const backgroundImageBuffer = fs.readFileSync(backgroundImagePath);
-    const backgroundImage = await parseImage(backgroundImageBuffer);
+    const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
+    const backgroundImage = parseImage(backgroundImageBmpBuffer);
     const audioReader = await createAudioBuffer(audioFilePath, FFMPEG_FORMAT);
     const audioBuffer = audioReader.audioBuffer;
     const sampleRate = audioReader.sampleRate;
@@ -71,13 +71,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
     for (let i = 0; i < framesCount; i++) {
-      const frameImage = await createVisualizerFrame(
-        backgroundImageBuffer,
+      const frameImage = createVisualizerFrame(
+        backgroundImage,
         spectrums[i],
         { width: spectrumWidth, height: spectrumHeight },
         spectrumColor
       );
-      const frameImageBuffer = await createImageBuffer(frameImage);
+      const frameImageBuffer = createImageBuffer(frameImage);
       ffmpegVideoWriter.stdin.write(frameImageBuffer);
     }
 

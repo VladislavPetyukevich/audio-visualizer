@@ -35,13 +35,16 @@
     }
   },
   "dependencies": {
+    "@jimp/bmp": "^0.9.3",
+    "@jimp/png": "^0.9.3",
+    "@types/bmp-js": "^0.1.0",
     "@types/ffmpeg-static": "^2.0.0",
     "@types/node": "^12.12.3",
-    "@types/pngjs": "^3.3.2",
     "@types/sinon": "^7.5.0",
     "array-smooth": "^1.0.0",
+    "bmp-js": "^0.1.0",
     "colorthief": "^2.3.0",
     "ffmpeg-static": "^2.6.0",
-    "pngjs": "^3.4.0"
+    "jimp": "^0.9.3"
   }
 }
