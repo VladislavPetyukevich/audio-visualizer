@@ -25,10 +25,9 @@ export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: S
     for (var currX = position.x; currX < position.x + size.width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
 
-      imageDstBuffer.data[idx] = color.red;
-      imageDstBuffer.data[idx + 1] = color.green;
-      imageDstBuffer.data[idx + 2] = color.blue;
-      imageDstBuffer.data[idx + 3] = 255; // alpha
+      imageDstBuffer.data[idx + 1] = color.blue;
+      imageDstBuffer.data[idx + 2] = color.green;
+      imageDstBuffer.data[idx + 3] = color.red;
     }
   }
 };

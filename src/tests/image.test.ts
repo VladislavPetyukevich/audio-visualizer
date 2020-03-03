@@ -19,10 +19,9 @@ describe('image', function () {
     const expectedImageData = Array.from({ length: imageWidth * imageWidth * 4 }).fill(0);
     const imagePixelIndices = [136, 140, 144, 148, 176, 180, 184, 188, 216, 220, 224, 228];
     imagePixelIndices.forEach((pixelIndex) => {
-      expectedImageData[pixelIndex] = rectColor.red;
-      expectedImageData[pixelIndex + 1] = rectColor.green;
-      expectedImageData[pixelIndex + 2] = rectColor.blue;
-      expectedImageData[pixelIndex + 3] = 255; // alpha
+      expectedImageData[pixelIndex + 1] = rectColor.blue;
+      expectedImageData[pixelIndex + 2] = rectColor.green;
+      expectedImageData[pixelIndex + 3] = rectColor.red;
     });
 
     drawRect(imageDstBuffer as any, { x: rectX, y: rectY }, { width: rectWidth, height: rectHeight }, rectColor);
