@@ -1,3 +1,4 @@
+import { Writable } from 'stream';
 import { spawn } from 'child_process';
 import { path as ffmpegPath } from 'ffmpeg-static';
 
@@ -42,3 +43,6 @@ export const calculateProgress = (framesCount: number, callback: (progress: numb
     callback(
       +(currentFrame / framesCount * 100).toFixed(2)
     );
+
+export const waitDrain = (stream: Writable) =>
+  new Promise<void>(resolve => stream.once('drain', resolve));

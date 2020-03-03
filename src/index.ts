@@ -1,8 +1,7 @@
 import path from 'path';
 import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums } from './audio';
-import { createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
-import { spawnFfmpegVideoWriter, getProgress, calculateProgress } from './video';
-import { parseImage } from './image';
+import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
+import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -78,7 +77,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         spectrumColor
       );
       const frameImageBuffer = createImageBuffer(frameImage);
-      ffmpegVideoWriter.stdin.write(frameImageBuffer);
+      const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImageBuffer);
+      if (!isFrameProcessed) {
+        await waitDrain(ffmpegVideoWriter.stdin);
+      }
     }
 
     ffmpegVideoWriter.stdin.end();
