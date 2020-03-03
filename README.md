@@ -10,7 +10,7 @@ const config = {
     path: 'media/background.png' // Supports PNG and JPG images
   },
   audio: {
-    path: 'media/audio.wav' // Only WAV is supported now
+    path: 'media/audio.wav' // Supports MP3 and WAV audio
   },
   outVideo: {
     path: 'media/out.mp4',
