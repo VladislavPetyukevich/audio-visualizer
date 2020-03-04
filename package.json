@@ -14,7 +14,15 @@
     "prebuild": "rimraf dist",
     "build": "tsc -m CommonJS"
   },
-  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VladislavPetyukevich/audio-visualizer"
+  },
+  "homepage": "https://github.com/VladislavPetyukevich/audio-visualizer#readme",
+  "keywords": [
+    "audio",
+    "visualizer"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
