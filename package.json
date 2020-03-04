@@ -1,5 +1,5 @@
 {
-  "name": "audio-visualizer",
+  "name": "nodejs-audio-visualizer",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",

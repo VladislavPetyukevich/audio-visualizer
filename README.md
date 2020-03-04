@@ -1,10 +1,10 @@
-# Audio-visualizer
+# nodejs-audio-visualizer
 Audio visualizer generator for Node.js with simple configuration.  
 Only WAV audio and PNG image format is supported now.
 
 ## Example
 ```javascript
-const renderAudioVisualizer = require('audio-visualizer').renderAudioVisualizer;
+const renderAudioVisualizer = require('nodejs-audio-visualizer').renderAudioVisualizer;
 const config = {
   image: {
     path: 'media/background.png' // Supports PNG and JPG images
