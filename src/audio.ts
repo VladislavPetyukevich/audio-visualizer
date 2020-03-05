@@ -52,10 +52,6 @@ export const getSmoothSpectrums = (audioData: number[], FPS: number, audioDataSt
 };
 
 export const bufferToUInt8 = (buffer: Buffer) => {
-  if (!(buffer instanceof Buffer)) {
-    throw new Error('Buffer argument is not instance of Buffer');
-  }
-
   const numbers = [];
   for (let i = 0; i < buffer.length; i += 1) {
     numbers.push(buffer.readUInt8(i));
