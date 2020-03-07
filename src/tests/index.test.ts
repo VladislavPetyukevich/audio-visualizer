@@ -18,7 +18,7 @@ describe('index', function () {
     sandbox.stub(audio, 'createAudioBuffer').returns(
       new Promise(resolve => resolve({ audioBuffer: Buffer.from([1, 1]), sampleRate: 2 }))
     );
-    sandbox.stub(image, 'getImageColor').returns(new Promise(resolve => resolve({ red: 0, green: 0, blue: 0 })));
+    sandbox.stub(image, 'getImageColor').returns({ red: 0, green: 0, blue: 0 });
 
     let exitCallback: Function = () => { };
     let childProcessStream: unknown = {

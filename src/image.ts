@@ -1,8 +1,6 @@
 /// <reference path="./vendor-typings/colorthief.d.ts"/>
 import { decode, encode, BmpDecoder } from 'bmp-js';
 import Jimp from 'jimp';
-import path from 'path';
-import ColorThief from 'colorthief';
 
 export interface Color {
   red: number;
@@ -68,9 +66,27 @@ export const parseImage = (buffer: Buffer) => decode(buffer);
 
 export const createImageBuffer = (image: BmpDecoder) => encode(image).data;
 
-export const getImageColor = async (imagePath: string) => {
-  const color = await ColorThief.getColor(path.resolve(imagePath));
-  return { red: color[0], green: color[1], blue: color[2] };
+export const getImageColor = (image: BmpDecoder): Color => {
+  let blueSum = 0;
+  let greenSum = 0;
+  let redSum = 0;
+
+  for (let currY = 0; currY < image.height; currY++) {
+    for (let currX = 0; currX < image.width; currX++) {
+      const idx = (image.width * currY + currX) << 2;
+
+      blueSum += image.data[idx + 1];
+      greenSum += image.data[idx + 2];
+      redSum += image.data[idx + 3];
+    }
+  }
+
+  const pixelsCount = image.width * image.height;
+  return {
+    red: ~~(redSum / pixelsCount),
+    green: ~~(greenSum / pixelsCount),
+    blue: ~~(blueSum / pixelsCount)
+  };
 };
 
 export const invertColor = (color: Color) =>

@@ -54,7 +54,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       backgroundImage.height * 0.1;
     const spectrumColor =
       (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
-      invertColor(await getImageColor(backgroundImagePath));
+      invertColor(getImageColor(backgroundImage));
 
     const audioDuration = audioData.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
