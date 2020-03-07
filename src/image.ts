@@ -1,4 +1,3 @@
-/// <reference path="./vendor-typings/colorthief.d.ts"/>
 import { decode, encode, BmpDecoder } from 'bmp-js';
 import Jimp from 'jimp';
 

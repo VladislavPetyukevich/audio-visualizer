@@ -55,7 +55,6 @@
     "@types/sinon": "^7.5.0",
     "array-smooth": "^1.0.0",
     "bmp-js": "^0.1.0",
-    "colorthief": "^2.3.0",
     "ffmpeg-static": "^2.6.0",
     "jimp": "^0.9.3"
   }
