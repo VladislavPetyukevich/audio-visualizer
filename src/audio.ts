@@ -4,6 +4,9 @@ import ffmpeg from 'ffmpeg-static';
 import { getSpectrum } from './dsp';
 import smooth from 'array-smooth';
 
+export const skipEvery = <T>(skipIndex: number) => (element: T, index: number) =>
+  (index % skipIndex === 0) ? element : null;
+
 export const getSmoothBuses = (busValues: number[], iterations: number) =>
   Array.from({ length: iterations }).reduce((accum: number[]) => smooth(accum, 2), busValues);
 

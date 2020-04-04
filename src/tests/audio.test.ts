@@ -6,7 +6,8 @@ import {
   normalizeAudioData,
   spawnFfmpegAudioReader,
   smoothSpectrums,
-  getSmoothSpectrums
+  getSmoothSpectrums,
+  skipEvery
 } from '../audio';
 import { createSandbox } from 'sinon';
 
@@ -66,6 +67,13 @@ describe('audio', function () {
   it('getSmoothSpectrums', () => {
     const result = getSmoothSpectrums([1, 2, 3, 4, 5, 6, 7, 8], 2, 2);
     const expected = [[0.4666666666666666], [0.6], [0.6], [0.7333333333333334]];
+    expect(result).deep.equal(expected);
+  });
+
+  it('skipEvery', () => {
+    const sampleData = [1, 2, 3, 4];
+    const result = sampleData.filter(skipEvery(2));
+    const expected = [1, 3];
     expect(result).deep.equal(expected);
   });
 });

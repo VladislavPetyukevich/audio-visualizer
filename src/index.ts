@@ -1,5 +1,5 @@
 import path from 'path';
-import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums } from './audio';
+import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums, skipEvery } from './audio';
 import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 
@@ -60,6 +60,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const framesCount = Math.trunc(audioDuration * FPS);
     const audioDataStep = Math.trunc(audioData.length / framesCount);
     const spectrums = getSmoothSpectrums(normalizedAudioData, FPS, audioDataStep);
+    const spectrumsReduced = spectrums.map(spectrum => spectrum.filter(skipEvery(4)));
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
@@ -72,7 +73,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     for (let i = 0; i < framesCount; i++) {
       const frameImage = createVisualizerFrame(
         backgroundImage,
-        spectrums[i],
+        spectrumsReduced[i],
         { width: spectrumWidth, height: spectrumHeight },
         spectrumColor
       );
