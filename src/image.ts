@@ -32,6 +32,7 @@ export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: S
 const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size, color: Color) => {
   const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - size.width / 2);
   const busWidth = size.width / spectrum.length;
+  const margin = 2;
 
   for (let spectrumX = 0; spectrumX < spectrum.length; spectrumX++) {
     const spectrumValue = spectrum[spectrumX];
@@ -41,7 +42,7 @@ const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size
 
     const rectX = paddingLeft + busWidth * spectrumX;
     const rectHeight = size.height * spectrumValue;
-    drawRect(imageDstBuffer, { x: rectX, y: 0 }, { width: busWidth, height: rectHeight }, color);
+    drawRect(imageDstBuffer, { x: rectX + margin, y: 0 }, { width: busWidth - margin / 2, height: rectHeight }, color);
   }
 };
 
