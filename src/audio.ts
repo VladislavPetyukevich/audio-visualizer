@@ -7,8 +7,8 @@ import smooth from 'array-smooth';
 export const skipEvery = <T>(skipIndex: number) => (element: T, index: number) =>
   (index % skipIndex === 0) ? element : null;
 
-export const getSmoothBuses = (busValues: number[], iterations: number) =>
-  Array.from({ length: iterations }).reduce((accum: number[]) => smooth(accum, 2), busValues);
+export const getSmoothBuses = (busValues: number[]) =>
+  smooth(busValues, 2);
 
 export const smoothSpectrums = (spectrums: number[][], FPS: number) => {
   const scaleValues = (values: number[]) => {
@@ -28,7 +28,7 @@ export const smoothSpectrums = (spectrums: number[][], FPS: number) => {
     }
   });
 
-  const smoothBuses = buses.map(bus => getSmoothBuses(scaleValues(bus), Math.trunc(FPS / 30) || 1));
+  const smoothBuses = buses.map(bus => getSmoothBuses(scaleValues(bus)));
   const smoothSpectrums: number[][] = [];
   for (let spectrumIndex = 0; spectrumIndex < spectrums.length; spectrumIndex++) {
     smoothSpectrums[spectrumIndex] = [];
