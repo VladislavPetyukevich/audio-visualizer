@@ -23,11 +23,20 @@ const config = {
   }
 };
 
-const onProgress = (progressPercent: number) => {
+const onProgress = (progressPercent: number) => { // not necessary callback
   console.log(`progress: ${progressPercent} %`);
 };
 
-renderAudioVisualizer(config, onProgress)
+let counter = 0;
+const shouldStop = () => { // not necessary callback
+  if (counter > 5) {
+    return true;
+  }
+  counter++;
+  return false;
+};
+
+renderAudioVisualizer(config, onProgress, shouldStop)
   .then((exitCode) => {
     console.log(`exited with code: ${exitCode}`);
   });

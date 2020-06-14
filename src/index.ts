@@ -28,7 +28,7 @@ export interface Config {
   }
 }
 
-export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any) =>
+export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
     const audioFilePath = path.resolve(config.audio.path);
     const backgroundImagePath = path.resolve(config.image.path);
@@ -81,6 +81,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImageBuffer);
       if (!isFrameProcessed) {
         await waitDrain(ffmpegVideoWriter.stdin);
+      }
+      if (shouldStop && shouldStop()) {
+        break;
       }
     }
 
