@@ -5,7 +5,11 @@ import {
   bufferToUInt8,
   normalizeAudioData,
   spawnFfmpegAudioReader,
-  skipEvery
+  skipEvery,
+  getPeaks,
+  correctPeaks,
+  smoothValues,
+  createSpectrumsProcessor,
 } from '../audio';
 import { createSandbox } from 'sinon';
 
@@ -61,5 +65,41 @@ describe('audio', function () {
     const result = sampleData.filter(skipEvery(2));
     const expected = [1, 3];
     expect(result).deep.equal(expected);
+  });
+
+  it('getPeaks', () => {
+    const sampleData = [1, 2, 3, 4];
+    const prevPeaks = [2, 2, 2, 5];
+    const resultNoPrevPeaks = getPeaks(sampleData);
+    expect(resultNoPrevPeaks).deep.equal(sampleData);
+    const resultWithPrevPeaks = getPeaks(sampleData, prevPeaks);
+    const expectedWithPrevPeaks = [2, 2, 3, 5];
+    expect(resultWithPrevPeaks).deep.equal(expectedWithPrevPeaks);
+  });
+
+  it('correctPeaks', () => {
+    const spectrums = [1, 2, 3, 4];
+    const peaks = [2, 2, 3, 5];
+    const result = correctPeaks(spectrums, peaks);
+    const expected = [0.5, 1, 1, 0.8];
+    expect(result).deep.equal(expected);
+  });
+
+  it('smoothValues', () => {
+    const spectrums = [1, 2, 3, 4];
+    const prevSpectrums = [2, 4, 6, 3];
+    const result = smoothValues(spectrums, prevSpectrums);
+    const expected = [1.5, 3, 4.5, 3.5];
+    expect(result).deep.equal(expected);
+  });
+
+  it('createSpectrumsProcessor', () => {
+    const busesCount = 2;
+    const spectrumsProcessor = createSpectrumsProcessor(busesCount);
+    
+    const frame0 = spectrumsProcessor(0, () => ([1, 2, 3, 4]));
+    expect(frame0).to.have.length(2);
+    const frame1 = spectrumsProcessor(1, () => ([2, 2, 6, 2]));
+    expect(frame1).to.have.length(2);
   });
 });
