@@ -1,5 +1,5 @@
 import path from 'path';
-import { createAudioBuffer, bufferToUInt8, normalizeAudioData, getSmoothSpectrums, skipEvery } from './audio';
+import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 
@@ -42,8 +42,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     if (!sampleRate) {
       throw new Error('ffmpeg didn\'t show audio sample rate');
     }
-    const audioData = PCM_FORMAT.parseFunction(audioBuffer);
-    const normalizedAudioData = normalizeAudioData(audioData);
 
     const FPS = config.outVideo.fps || 60;
     const spectrumWidth =
@@ -55,12 +53,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
       invertColor(getImageColor(backgroundImage));
+    const spectrumBusesCount = 64;
 
-    const audioDuration = audioData.length / sampleRate;
+    const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
-    const audioDataStep = Math.trunc(audioData.length / framesCount);
-    const spectrums = getSmoothSpectrums(normalizedAudioData, FPS, audioDataStep);
-    const spectrumsReduced = spectrums.map(spectrum => spectrum.filter(skipEvery(4)));
+    const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
@@ -70,10 +67,14 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     });
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
+    const processSpectrum = createSpectrumsProcessor(spectrumBusesCount);
     for (let i = 0; i < framesCount; i++) {
+      const audioDataParser = () =>
+        PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
+      const spectrum = processSpectrum(i, audioDataParser);
       const frameImage = createVisualizerFrame(
         backgroundImage,
-        spectrumsReduced[i],
+        spectrum,
         { width: spectrumWidth, height: spectrumHeight },
         spectrumColor
       );
