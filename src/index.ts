@@ -29,8 +29,12 @@ export interface Config {
   tweaks?: {
     ffmpeg_cfr?: string;
     ffmpeg_preset?: string;
+    frame_processing_delay?: number;
   };
 }
+
+const sleep = (timeout: number) =>
+  new Promise(resolve => setTimeout(resolve, 1000));
 
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
@@ -61,6 +65,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       config.tweaks && config.tweaks.ffmpeg_cfr;
     const ffmpeg_preset =
       config.tweaks && config.tweaks.ffmpeg_preset;
+    const frame_processing_delay =
+      config.tweaks && config.tweaks.frame_processing_delay;
     const spectrumBusesCount = 64;
 
     const audioDuration = audioBuffer.length / sampleRate;
@@ -95,6 +101,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       }
       if (shouldStop && shouldStop()) {
         break;
+      }
+      if (frame_processing_delay) {
+        await sleep(frame_processing_delay);
       }
     }
 

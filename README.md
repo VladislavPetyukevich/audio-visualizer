@@ -23,7 +23,8 @@ const config = {
   },
   tweaks: { // Optional
     ffmpeg_cfr: '30', // Default value: 23
-    ffmpeg_preset: 'ultrafast' // Default value: medium
+    ffmpeg_preset: 'ultrafast', // Default value: medium
+    frame_processing_delay: 1000 // Delay between processing frames in milliseconds
   }
 };
 
