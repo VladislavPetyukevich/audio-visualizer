@@ -25,7 +25,11 @@ export interface Config {
       height?: number;
       color?: Color | string;
     }
-  }
+  };
+  tweaks?: {
+    ffmpeg_cfr?: string;
+    ffmpeg_preset?: string;
+  };
 }
 
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
@@ -53,6 +57,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
       invertColor(getImageColor(backgroundImage));
+    const ffmpeg_cfr =
+      config.tweaks && config.tweaks.ffmpeg_cfr;
+    const ffmpeg_preset =
+      config.tweaks && config.tweaks.ffmpeg_preset;
     const spectrumBusesCount = 64;
 
     const audioDuration = audioBuffer.length / sampleRate;
@@ -63,7 +71,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       audioFilename: audioFilePath,
       videoFileName: outVideoPath,
       fps: FPS,
-      ...(!!onProgress && { onStderr: getProgress(calculateProgress(framesCount + 1, onProgress)) })
+      ...(!!onProgress && { onStderr: getProgress(calculateProgress(framesCount + 1, onProgress)) }),
+      ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
+      ...(ffmpeg_preset && { preset: ffmpeg_preset }),
     });
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 

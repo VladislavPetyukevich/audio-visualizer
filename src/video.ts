@@ -6,16 +6,20 @@ interface FfmpegVideoWriterConfig {
   audioFilename: string;
   videoFileName: string;
   fps: number;
+  crf?: string;
+  preset?: string;
   onStderr?: (data: any) => any;
 }
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
+  const crf = config.crf || '23';
+  const preset = config.preset || 'medium';
   const args = [
     '-y',
     '-i', config.audioFilename,
-    '-crf', '18',
+    '-crf', crf,
     '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
-    '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', config.videoFileName,
+    '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
     '-r', `${config.fps}`,
     '-i', '-'
   ];

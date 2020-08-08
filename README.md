@@ -20,6 +20,10 @@ const config = {
       height: 300, // Default value: 10% of background image height
       color: '#cccc99' // Default value: inverted color of background image
     }
+  },
+  tweaks: { // Optional
+    ffmpeg_cfr: '30', // Default value: 23
+    ffmpeg_preset: 'ultrafast' // Default value: medium
   }
 };
 
