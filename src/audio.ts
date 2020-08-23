@@ -25,7 +25,11 @@ export const correctPeaks = (spectrums: number[], peaks: number[]) => {
   for (let i = 0; i < spectrums.length; i++) {
     const value = spectrums[i];
     const peakValue = peaks[i] || 0;
-    resultSpectrum.push(value / peakValue);
+    if (value < 3) {
+      resultSpectrum.push(value / 3);
+    } else {
+      resultSpectrum.push(value / peakValue);
+    }
   }
   return resultSpectrum;
 };
