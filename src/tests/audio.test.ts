@@ -81,7 +81,7 @@ describe('audio', function () {
     const spectrums = [1, 2, 3, 4];
     const peaks = [2, 2, 3, 5];
     const result = correctPeaks(spectrums, peaks);
-    const expected = [0.5, 1, 1, 0.8];
+    const expected = [1 / 3, 2 / 3, 1, 0.8];
     expect(result).deep.equal(expected);
   });
 
