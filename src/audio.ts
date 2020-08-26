@@ -3,7 +3,7 @@ import ffmpeg from 'ffmpeg-static';
 import { getSpectrum } from './dsp';
 
 export const skipEvery = <T>(skipIndex: number) => (element: T, index: number) =>
-  (index % skipIndex === 0) ? element : null;
+  index % skipIndex === 0;
 
 export const getPeaks = (spectrums: number[], prevPeaks?: number[]) => {
   if (!prevPeaks) {
