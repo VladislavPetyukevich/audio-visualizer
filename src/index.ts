@@ -34,7 +34,7 @@ export interface Config {
 }
 
 const sleep = (timeout: number) =>
-  new Promise(resolve => setTimeout(resolve, 1000));
+  new Promise(resolve => setTimeout(resolve, timeout));
 
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
