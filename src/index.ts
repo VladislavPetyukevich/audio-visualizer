@@ -1,4 +1,15 @@
-import path from 'path';
+import {
+  getAudioFilePath,
+  getBackgroundImagePath,
+  getOutVideoPath,
+  getFPS,
+  getSpectrumWidthAbsolute,
+  getSpectrumHeightAbsolute,
+  getSpectrumColor,
+  getFfmpeg_cfr,
+  getFfmpeg_preset,
+  getFrame_processing_delay
+} from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
@@ -38,9 +49,9 @@ const sleep = (timeout: number) =>
 
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
-    const audioFilePath = path.resolve(config.audio.path);
-    const backgroundImagePath = path.resolve(config.image.path);
-    const outVideoPath = path.resolve(config.outVideo.path);
+    const audioFilePath = getAudioFilePath(config);
+    const backgroundImagePath = getBackgroundImagePath(config);
+    const outVideoPath = getOutVideoPath(config);
 
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
@@ -51,22 +62,17 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       throw new Error('ffmpeg didn\'t show audio sample rate');
     }
 
-    const FPS = config.outVideo.fps || 60;
+    const FPS = getFPS(config);
     const spectrumWidth =
-      (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
-      backgroundImage.width * 0.4;
+      getSpectrumWidthAbsolute(config, backgroundImage.width);
     const spectrumHeight =
-      (config.outVideo.spectrum && config.outVideo.spectrum.height) ||
-      backgroundImage.height * 0.1;
+      getSpectrumHeightAbsolute(config, backgroundImage.height);
     const spectrumColor =
-      (config.outVideo.spectrum && config.outVideo.spectrum.color) ||
+      getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
-    const ffmpeg_cfr =
-      config.tweaks && config.tweaks.ffmpeg_cfr;
-    const ffmpeg_preset =
-      config.tweaks && config.tweaks.ffmpeg_preset;
-    const frame_processing_delay =
-      config.tweaks && config.tweaks.frame_processing_delay;
+    const ffmpeg_cfr = getFfmpeg_cfr(config);
+    const ffmpeg_preset = getFfmpeg_preset(config);
+    const frame_processing_delay = getFrame_processing_delay(config);
     const spectrumBusesCount = 64;
 
     const audioDuration = audioBuffer.length / sampleRate;
