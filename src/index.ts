@@ -5,6 +5,8 @@ import {
   getFPS,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
+  getSpectrumXAbsolute,
+  getSpectrumYAbsolute,
   getSpectrumColor,
   getFfmpeg_cfr,
   getFfmpeg_preset,
@@ -34,6 +36,8 @@ export interface Config {
     spectrum?: {
       width?: number;
       height?: number;
+      x?: number | PositionAliasName;
+      y?: number | PositionAliasName;
       color?: Color | string;
     }
   };
@@ -43,6 +47,14 @@ export interface Config {
     frame_processing_delay?: number;
   };
 }
+
+export type PositionAliasName =
+  'left' |
+  'center' |
+  'right' |
+  'top' |
+  'middle' |
+  'bottom';
 
 const sleep = (timeout: number) =>
   new Promise(resolve => setTimeout(resolve, timeout));
@@ -67,6 +79,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       getSpectrumWidthAbsolute(config, backgroundImage.width);
     const spectrumHeight =
       getSpectrumHeightAbsolute(config, backgroundImage.height);
+    const spectrumX =
+      getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
+    const spectrumY =
+      getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
@@ -98,6 +114,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         backgroundImage,
         spectrum,
         { width: spectrumWidth, height: spectrumHeight },
+        { x: spectrumX, y: spectrumY },
         spectrumColor
       );
       const frameImageBuffer = createImageBuffer(frameImage);

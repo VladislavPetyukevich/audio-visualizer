@@ -29,9 +29,10 @@ export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: S
   }
 };
 
-const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size, color: Color) => {
-  const paddingLeft = Math.trunc(imageDstBuffer.width / 2 - size.width / 2);
+const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, color: Color) => {
   const busWidth = Math.trunc(size.width / spectrum.length);
+  const left = Math.trunc(position.x);
+  const top = Math.trunc(position.y);
   const margin = 4;
 
   for (let spectrumX = 0; spectrumX < spectrum.length; spectrumX++) {
@@ -40,17 +41,17 @@ const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size
       throw new Error('Spectrum values must be in range from 0 to 1');
     }
 
-    const rectX = paddingLeft + busWidth * spectrumX;
+    const rectX = left + busWidth * spectrumX;
     const rectHeight = size.height * spectrumValue;
-    drawRect(imageDstBuffer, { x: rectX + margin, y: 0 }, { width: busWidth - margin / 2, height: rectHeight }, color);
+    drawRect(imageDstBuffer, { x: rectX + margin, y: top }, { width: busWidth - margin / 2, height: rectHeight }, color);
   }
 };
 
-export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, color: Color | string) => {
+export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, color: Color | string) => {
   const image = Object.assign({}, backgroundImageBuffer);
   image.data = Buffer.from(image.data);
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  drawSpectrum(image, spectrum, size, rgbSpectrumColor);
+  drawSpectrum(image, spectrum, size, position, rgbSpectrumColor);
   return image;
 };
 

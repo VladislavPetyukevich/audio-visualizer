@@ -32,10 +32,11 @@ describe('image', function () {
     const backgroundImagePath = path.resolve('example/media/background.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
-    const frame = await createVisualizerFrame(
+    const frame = createVisualizerFrame(
       backgroundImage,
       [0.5, 0, 1],
       { width: 15, height: 20 },
+      { x: 15, y: 0 },
       { red: 1, green: 1, blue: 1 }
     );
     expect(frame.data.toJSON().data.length).equal(1090560);

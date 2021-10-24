@@ -1,11 +1,29 @@
 import path from 'path';
-import { Config } from './index';
+import { Config, PositionAliasName } from './index';
 
 export const defaults = {
   fps: 60,
   spectrumWidth: 0.4,
-  spectrumHeight: 0.1
+  spectrumHeight: 0.1,
+  spectrumX: 'center',
+  spectrumY: 'top'
 };
+
+type RelativePositionValue = 0 | 0.5 | 1;
+
+interface PositionAlias {
+  name: PositionAliasName;
+  value: RelativePositionValue;
+}
+
+const postitionAliases: PositionAlias[] = [
+  { name: 'left', value: 0 },
+  { name: 'center', value: 0.5 },
+  { name: 'right', value: 1 },
+  { name: 'top', value: 0 },
+  { name: 'middle', value: 0.5 },
+  { name: 'bottom', value: 1 },
+];
 
 const checkIsInt = (num: number) =>
   num % 1 === 0;
@@ -50,6 +68,99 @@ export const getSpectrumHeightAbsolute = (
     return spectrumHeight;
   }
   return backgroundImageHeight * spectrumHeight;
+};
+
+const getSpectrumX = (config: Config) =>
+  parseNumberIfPossible(
+    (config.outVideo.spectrum && config.outVideo.spectrum.x) ||
+    defaults.spectrumX
+  );
+
+const getSpectrumY = (config: Config) =>
+  parseNumberIfPossible(
+    (config.outVideo.spectrum && config.outVideo.spectrum.y) ||
+    defaults.spectrumY
+  );
+
+const parseNumberIfPossible = (value: string | number) => {
+  const parsed = Number(value);
+  if (isNaN(parsed)) {
+    return value;
+  }
+  return parsed;
+};
+
+const parsePositionAlias = (aliasName: string): PositionAlias => {
+  const nameNormalized = aliasName.trim().toLowerCase();
+  const alias = postitionAliases.find(
+    als => als.name === nameNormalized
+  );
+  if (!alias) {
+    throw new Error();
+  }
+  return alias;
+};
+
+const getValidPositionAliasValues = () =>
+  postitionAliases.map(aliasEl => aliasEl.name).join(', ');
+
+const getSpectrumAbsolutePosition = (
+  relativePosition: RelativePositionValue,
+  spectrumSize: number,
+  backgroundImageSize: number
+) => {
+  switch (relativePosition) {
+    case 0:
+      return 0;
+    case 0.5:
+      return relativePosition * backgroundImageSize - spectrumSize / 2;
+    case 1:
+      return relativePosition * backgroundImageSize - spectrumSize;
+    default:
+      throw new Error();
+  }
+};
+
+export const getSpectrumXAbsolute = (
+  config: Config,
+  spectrumWidth: number,
+  backgroundImageWidth: number
+) => {
+  const spectrumX = getSpectrumX(config);
+  if (typeof spectrumX !== 'string') {
+    return spectrumX;
+  }
+  try {
+    const spectrumXParsed = parsePositionAlias(spectrumX);
+    return getSpectrumAbsolutePosition(
+      spectrumXParsed.value,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+  } catch {
+    throw new Error(`Invalid spectrum x value: ${spectrumX}. Valid values: ${getValidPositionAliasValues()}.`);
+  }
+};
+
+export const getSpectrumYAbsolute = (
+  config: Config,
+  spectrumHeight: number,
+  backgroundImageHeight: number
+) => {
+  const spectrumY = getSpectrumY(config);
+  if (typeof spectrumY !== 'string') {
+    return spectrumY;
+  }
+  try {
+    const spectrumXParsed = parsePositionAlias(spectrumY);
+    return getSpectrumAbsolutePosition(
+      spectrumXParsed.value,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+  } catch {
+    throw new Error(`Invalid spectrum y value: ${spectrumY}. Valid values: ${getValidPositionAliasValues()}.`);
+  }
 };
 
 export const getSpectrumColor = (config: Config) =>

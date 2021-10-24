@@ -9,6 +9,8 @@ import {
   getFPS,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
+  getSpectrumXAbsolute,
+  getSpectrumYAbsolute,
   getSpectrumColor,
   getFfmpeg_cfr,
   getFfmpeg_preset,
@@ -90,6 +92,136 @@ describe('config', function() {
       outVideo: { spectrum: { height: 0.69 }}
     } as Config, backgroundImageHeight);
     expect(result3).equal(backgroundImageHeight * 0.69);
+  });
+
+  it('getSpectrumXAbsolute', function() {
+    const spectrumWidth = 420;
+    const backgroundImageWidth = 1366;
+    const result1 = getSpectrumXAbsolute(
+      {
+        outVideo: {},
+      } as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result1).equal(
+      0.5 * backgroundImageWidth - spectrumWidth / 2
+    );
+
+    const result2 = getSpectrumXAbsolute(
+      {
+        outVideo: { spectrum: { x: 420 } }
+      } as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result2).equal(420);
+
+    const result3 = getSpectrumXAbsolute(
+      {
+        outVideo: { spectrum: { x: 'left' } }
+      } as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result3).equal(0);
+
+    const result4 = getSpectrumXAbsolute(
+      {
+        outVideo: { spectrum: { x: 'center' } }
+      } as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result4).equal(
+      0.5 * backgroundImageWidth - spectrumWidth / 2
+    );
+
+    const result5 = getSpectrumXAbsolute(
+      {
+        outVideo: { spectrum: { x: 'right' } }
+      } as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result5).equal(
+      1 * backgroundImageWidth - spectrumWidth
+    );
+
+    const result6 = getSpectrumXAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { x: 'sagewklkg' } }
+      } as unknown as Config,
+      spectrumWidth,
+      backgroundImageWidth
+    );
+    expect(result6).to.throw('Invalid spectrum x value: sagewklkg. Valid values: left, center, right, top, middle, bottom.');
+  });
+
+  it('getSpectrumYAbsolute', function() {
+    const spectrumHeight = 125;
+    const backgroundImageHeight = 768;
+    const result1 = getSpectrumYAbsolute(
+      {
+        outVideo: {},
+      } as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result1).equal(
+      0
+    );
+
+    const result2 = getSpectrumYAbsolute(
+      {
+        outVideo: { spectrum: { y: 69 } }
+      } as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result2).equal(69);
+
+    const result3 = getSpectrumYAbsolute(
+      {
+        outVideo: { spectrum: { y: 'top' } }
+      } as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result3).equal(0);
+
+    const result4 = getSpectrumYAbsolute(
+      {
+        outVideo: { spectrum: { y: 'middle' } }
+      } as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result4).equal(
+      0.5 * backgroundImageHeight - spectrumHeight / 2
+    );
+
+    const result5 = getSpectrumYAbsolute(
+      {
+        outVideo: { spectrum: { y: 'bottom' } }
+      } as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result5).equal(
+      1 * backgroundImageHeight - spectrumHeight
+    );
+
+    const result6 = getSpectrumYAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { y: 'asokosckm' } }
+      } as unknown as Config,
+      spectrumHeight,
+      backgroundImageHeight
+    );
+    expect(result6).to.throw('Invalid spectrum y value: asokosckm. Valid values: left, center, right, top, middle, bottom.');
   });
 
   it('getSpectrumColor', function() {
