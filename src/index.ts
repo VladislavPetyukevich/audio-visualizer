@@ -10,7 +10,9 @@ import {
   getSpectrumColor,
   getFfmpeg_cfr,
   getFfmpeg_preset,
-  getFrame_processing_delay
+  getFrame_processing_delay,
+  rotationAliasValues,
+  getSpectrumRotation
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
@@ -38,6 +40,7 @@ export interface Config {
       height?: number;
       x?: number | PositionAliasName;
       y?: number | PositionAliasName;
+      rotation?: RotationAliasName;
       color?: Color | string;
     }
   };
@@ -55,6 +58,8 @@ export type PositionAliasName =
   'top' |
   'middle' |
   'bottom';
+
+export type RotationAliasName = typeof rotationAliasValues[number];
 
 const sleep = (timeout: number) =>
   new Promise(resolve => setTimeout(resolve, timeout));
@@ -83,6 +88,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
     const spectrumY =
       getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
+    const spectrumRotation =
+      getSpectrumRotation(config);
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
@@ -115,6 +122,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         spectrum,
         { width: spectrumWidth, height: spectrumHeight },
         { x: spectrumX, y: spectrumY },
+        spectrumRotation,
         spectrumColor
       );
       const frameImageBuffer = createImageBuffer(frameImage);

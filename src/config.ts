@@ -1,12 +1,13 @@
 import path from 'path';
-import { Config, PositionAliasName } from './index';
+import { Config, PositionAliasName, RotationAliasName } from './index';
 
 export const defaults = {
   fps: 60,
   spectrumWidth: 0.4,
   spectrumHeight: 0.1,
   spectrumX: 'center',
-  spectrumY: 'top'
+  spectrumY: 'top',
+  spectrumRotation: 'down'
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -24,6 +25,8 @@ const postitionAliases: PositionAlias[] = [
   { name: 'middle', value: 0.5 },
   { name: 'bottom', value: 1 },
 ];
+
+export const rotationAliasValues = ['up', 'down'] as const;
 
 const checkIsInt = (num: number) =>
   num % 1 === 0;
@@ -161,6 +164,23 @@ export const getSpectrumYAbsolute = (
   } catch {
     throw new Error(`Invalid spectrum y value: ${spectrumY}. Valid values: ${getValidPositionAliasValues()}.`);
   }
+};
+
+const getValidRotationAliasValues = () =>
+  rotationAliasValues.join(', ');
+
+export const checkIsValidRotationAlias = (aliasName: string) => {
+  return !!rotationAliasValues.find(al => al === aliasName);
+};
+
+export const getSpectrumRotation = (config: Config): RotationAliasName => {
+  const rotationValue =
+    (config.outVideo.spectrum && config.outVideo.spectrum.rotation) ||
+    defaults.spectrumRotation;
+  if (!checkIsValidRotationAlias(rotationValue)) {
+    throw new Error(`Invalid spectrum rotation value: ${rotationValue}. Valid values: ${getValidRotationAliasValues}.`);
+  }
+  return rotationValue as RotationAliasName;
 };
 
 export const getSpectrumColor = (config: Config) =>

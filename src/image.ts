@@ -1,3 +1,4 @@
+import { RotationAliasName } from './index';
 import { decode, encode, BmpDecoder } from 'bmp-js';
 import Jimp from 'jimp';
 
@@ -29,10 +30,18 @@ export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: S
   }
 };
 
-const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, color: Color) => {
+const drawSpectrum = (
+  imageDstBuffer: BmpDecoder,
+  spectrum: number[],
+  size: Size,
+  position: Position,
+  rotation: RotationAliasName,
+  color: Color
+) => {
   const busWidth = Math.trunc(size.width / spectrum.length);
   const left = Math.trunc(position.x);
   const top = Math.trunc(position.y);
+  const height = Math.trunc(size.height);
   const margin = 4;
 
   for (let spectrumX = 0; spectrumX < spectrum.length; spectrumX++) {
@@ -42,16 +51,17 @@ const drawSpectrum = (imageDstBuffer: BmpDecoder, spectrum: number[], size: Size
     }
 
     const rectX = left + busWidth * spectrumX;
-    const rectHeight = size.height * spectrumValue;
-    drawRect(imageDstBuffer, { x: rectX + margin, y: top }, { width: busWidth - margin / 2, height: rectHeight }, color);
+    const rectHeight = Math.trunc(height * spectrumValue);
+    const rectY = (rotation === 'up') ? top + height - rectHeight : top;
+    drawRect(imageDstBuffer, { x: rectX + margin, y: rectY }, { width: busWidth - margin / 2, height: rectHeight }, color);
   }
 };
 
-export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, color: Color | string) => {
+export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, rotation: RotationAliasName, color: Color | string) => {
   const image = Object.assign({}, backgroundImageBuffer);
   image.data = Buffer.from(image.data);
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  drawSpectrum(image, spectrum, size, position, rgbSpectrumColor);
+  drawSpectrum(image, spectrum, size, position, rotation, rgbSpectrumColor);
   return image;
 };
 

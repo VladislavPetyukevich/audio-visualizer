@@ -37,6 +37,7 @@ describe('image', function () {
       [0.5, 0, 1],
       { width: 15, height: 20 },
       { x: 15, y: 0 },
+      'down',
       { red: 1, green: 1, blue: 1 }
     );
     expect(frame.data.toJSON().data.length).equal(1090560);

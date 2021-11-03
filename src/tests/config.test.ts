@@ -14,7 +14,8 @@ import {
   getSpectrumColor,
   getFfmpeg_cfr,
   getFfmpeg_preset,
-  getFrame_processing_delay
+  getFrame_processing_delay,
+  checkIsValidRotationAlias
 } from '../config';
 
 describe('config', function() {
@@ -270,5 +271,16 @@ describe('config', function() {
       tweaks: { frame_processing_delay: 420 }
     } as Config);
     expect(result2).equal(420);
+  });
+
+  it('checkIsValidRotationAlias', function() {
+    const result1 = checkIsValidRotationAlias('up');
+    expect(result1).equal(true);
+
+    const result2 = checkIsValidRotationAlias('down');
+    expect(result2).equal(true);
+
+    const result3 = checkIsValidRotationAlias('fake value');
+    expect(result3).equal(false);
   });
 });

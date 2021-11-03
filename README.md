@@ -20,6 +20,7 @@ const config = {
       height: 0.15, // 15% of background image height. Default value: 10%. Also you can use absolute values. For example, value 300 for 300 pixels height.
       x: 'center', // Available values: 'left', 'center', right'. Also you can use absolute number values. For example, value 300 for 300 pixels x.
       y: 'bottom', // Available values: 'top', 'middle', bottom'. Also you can use absolute number values. For example, value 300 for 300 pixels y.
+      rotation: 'up', // Available values: 'up', 'down'. Default value: 'down'.
       color: '#cccc99' // Default value: inverted color of background image
     }
   },
