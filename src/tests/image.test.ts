@@ -2,6 +2,9 @@ import { expect } from 'chai';
 import path from 'path';
 import { drawRect, Color, createVisualizerFrame, parseImage, convertToBmp } from '../image';
 
+import frameSnapshotSpectrumDown from './snapshots/frameSnapshotSpectrumDown.json';
+import frameSnapshotSpectrumUp from './snapshots/frameSnapshotSpectrumUp.json';
+
 describe('image', function () {
   it('drawRect', function () {
     const imageWidth = 10;
@@ -32,7 +35,7 @@ describe('image', function () {
     const backgroundImagePath = path.resolve('example/media/background.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
-    const frame = createVisualizerFrame(
+    const frameSpectrumDown = createVisualizerFrame(
       backgroundImage,
       [0.5, 0, 1],
       { width: 15, height: 20 },
@@ -40,6 +43,18 @@ describe('image', function () {
       'down',
       { red: 1, green: 1, blue: 1 }
     );
-    expect(frame.data.toJSON().data.length).equal(1090560);
+    const resultSpectrumDown = frameSpectrumDown.data.toJSON().data;
+    expect(resultSpectrumDown).deep.equal(frameSnapshotSpectrumDown);
+
+    const frameSpectrumUp = createVisualizerFrame(
+      backgroundImage,
+      [0.1, 1, 0],
+      { width: 25, height: 23 },
+      { x: 10, y: 5 },
+      'up',
+      { red: 0, green: 123, blue: 69 }
+    );
+    const resultSpectrumUp = frameSpectrumUp.data.toJSON().data;
+    expect(resultSpectrumUp).deep.equal(frameSnapshotSpectrumUp);
   });
 });
