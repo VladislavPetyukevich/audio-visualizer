@@ -1,10 +1,10 @@
 import path from 'path';
-import { Config, PositionAliasName, RotationAliasName } from './index';
+import { Config, SpectrumSizeValue, PositionAliasName, RotationAliasName } from './index';
 
 export const defaults = {
   fps: 60,
-  spectrumWidth: 0.4,
-  spectrumHeight: 0.1,
+  spectrumWidth: '40%',
+  spectrumHeight: '10%',
   spectrumX: 'center',
   spectrumY: 'top',
   spectrumRotation: 'down'
@@ -28,8 +28,8 @@ const postitionAliases: PositionAlias[] = [
 
 export const rotationAliasValues = ['up', 'down'] as const;
 
-const checkIsInt = (num: number) =>
-  num % 1 === 0;
+export const checkIsPercentValue = (value: string) =>
+  RegExp(/\d+%/).test(value)
 
 export const getAudioFilePath = (config: Config) =>
   path.resolve(config.audio.path);
@@ -47,15 +47,34 @@ const getSpectrumWidth = (config: Config) =>
   (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
   defaults.spectrumWidth;
 
+const getSpectrumSizeAbsolute = (
+  spectrumSize: SpectrumSizeValue, backgroundImageSize: number
+) => {
+  if (typeof spectrumSize === 'number') {
+    return spectrumSize;
+  }
+  const isPercentValue = checkIsPercentValue(spectrumSize);
+  if (!isPercentValue) {
+    throw new Error();
+  }
+  const percentValue = parseInt(spectrumSize) / 100;
+  return backgroundImageSize * percentValue;
+};
+
+const getSpectrumSizeValueErrorMessage = (
+  fieldName: string, value: SpectrumSizeValue
+) =>
+  `Invalid spectrum ${fieldName} value: '${value}'. Use number value or percent value in string, for example: '30%'.`
+
 export const getSpectrumWidthAbsolute = (
   config: Config, backgroundImageWidth: number
 ) => {
   const spectrumWidth = getSpectrumWidth(config);
-  const isAbsoluteValue = checkIsInt(spectrumWidth);
-  if (isAbsoluteValue) {
-    return spectrumWidth;
+  try {
+    return getSpectrumSizeAbsolute(spectrumWidth, backgroundImageWidth);
+  } catch {
+    throw new Error(getSpectrumSizeValueErrorMessage('width', spectrumWidth));
   }
-  return backgroundImageWidth * spectrumWidth;
 };
 
 const getSpectrumHeight = (config: Config) =>
@@ -66,11 +85,11 @@ export const getSpectrumHeightAbsolute = (
   config: Config, backgroundImageHeight: number
 ) => {
   const spectrumHeight = getSpectrumHeight(config);
-  const isAbsoluteValue = checkIsInt(spectrumHeight);
-  if (isAbsoluteValue) {
-    return spectrumHeight;
+  try {
+    return getSpectrumSizeAbsolute(spectrumHeight, backgroundImageHeight);
+  } catch {
+    throw new Error(getSpectrumSizeValueErrorMessage('height', spectrumHeight));
   }
-  return backgroundImageHeight * spectrumHeight;
 };
 
 const getSpectrumX = (config: Config) =>

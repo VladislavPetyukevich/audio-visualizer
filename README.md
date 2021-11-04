@@ -16,8 +16,8 @@ const config = {
     path: 'media/out.mp4',
     fps: 25, // Default value: 60
     spectrum: { // Audio spectrum configuration. Optional.
-      width: 0.3, // 30% of background image width. Default value: 40%. Also you can use absolute values. For example, value 300 for 300 pixels width.
-      height: 0.15, // 15% of background image height. Default value: 10%. Also you can use absolute values. For example, value 300 for 300 pixels height.
+      width: '30%', // 30% of background image width. Default value: 40%. Also you can use absolute values. For example, value 300 for 300 pixels width.
+      height: '15%', // 15% of background image height. Default value: 10%. Also you can use absolute values. For example, value 300 for 300 pixels height.
       x: 'center', // Available values: 'left', 'center', right'. Also you can use absolute number values. For example, value 300 for 300 pixels x.
       y: 'bottom', // Available values: 'top', 'middle', bottom'. Also you can use absolute number values. For example, value 300 for 300 pixels y.
       rotation: 'up', // Available values: 'up', 'down'. Default value: 'down'.

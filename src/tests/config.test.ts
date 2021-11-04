@@ -15,7 +15,8 @@ import {
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
-  checkIsValidRotationAlias
+  checkIsValidRotationAlias,
+  checkIsPercentValue
 } from '../config';
 
 describe('config', function() {
@@ -55,13 +56,24 @@ describe('config', function() {
     expect(result2).equal(15);
   });
 
+  it('checkIsPercentValue', function() {
+    const result1 = checkIsPercentValue('69%');
+    expect(result1).equal(true);
+
+    const result2 = checkIsPercentValue('69');
+    expect(result2).equal(false);
+
+    const result3 = checkIsPercentValue('fake value');
+    expect(result3).equal(false);
+  });
+
   it('getSpectrumWidthAbsolute', function() {
     const backgroundImageWidth = 1366;
     const result1 = getSpectrumWidthAbsolute({
       outVideo: {}
     } as Config, backgroundImageWidth);
     expect(result1).equal(
-      backgroundImageWidth * defaults.spectrumWidth
+      backgroundImageWidth * (parseInt(defaults.spectrumWidth) / 100)
     );
 
     const result2 = getSpectrumWidthAbsolute({
@@ -70,9 +82,18 @@ describe('config', function() {
     expect(result2).equal(420);
 
     const result3 = getSpectrumWidthAbsolute({
-      outVideo: { spectrum: { width: 0.69 }}
+      outVideo: { spectrum: { width: '69%' }}
     } as Config, backgroundImageWidth);
     expect(result3).equal(backgroundImageWidth * 0.69);
+
+    const result4 = getSpectrumWidthAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { width: '69' }}
+      } as Config,
+      backgroundImageWidth
+    );
+    expect(result4).to.throw('Invalid spectrum width value: \'69\'. Use number value or percent value in string, for example: \'30%\'.');
   });
 
   it('getSpectrumHeightAbsolute', function() {
@@ -81,7 +102,7 @@ describe('config', function() {
       outVideo: {}
     } as Config, backgroundImageHeight);
     expect(result1).equal(
-      backgroundImageHeight * defaults.spectrumHeight
+      backgroundImageHeight * (parseInt(defaults.spectrumHeight) / 100)
     );
 
     const result2 = getSpectrumHeightAbsolute({
@@ -90,9 +111,18 @@ describe('config', function() {
     expect(result2).equal(420);
 
     const result3 = getSpectrumHeightAbsolute({
-      outVideo: { spectrum: { height: 0.69 }}
+      outVideo: { spectrum: { height: '69%' }}
     } as Config, backgroundImageHeight);
     expect(result3).equal(backgroundImageHeight * 0.69);
+
+    const result4 = getSpectrumHeightAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { height: '69' }}
+      } as Config,
+      backgroundImageHeight
+    );
+    expect(result4).to.throw('Invalid spectrum height value: \'69\'. Use number value or percent value in string, for example: \'30%\'.');
   });
 
   it('getSpectrumXAbsolute', function() {

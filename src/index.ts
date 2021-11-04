@@ -36,8 +36,8 @@ export interface Config {
     path: string;
     fps?: number;
     spectrum?: {
-      width?: number;
-      height?: number;
+      width?: SpectrumSizeValue;
+      height?: SpectrumSizeValue;
       x?: number | PositionAliasName;
       y?: number | PositionAliasName;
       rotation?: RotationAliasName;
@@ -50,6 +50,8 @@ export interface Config {
     frame_processing_delay?: number;
   };
 }
+
+export type SpectrumSizeValue = number | string;
 
 export type PositionAliasName =
   'left' |
