@@ -21,7 +21,8 @@ const config = {
       x: 'center', // Available values: 'left', 'center', right'. Also you can use absolute number values. For example, value 300 for 300 pixels x.
       y: 'bottom', // Available values: 'top', 'middle', bottom'. Also you can use absolute number values. For example, value 300 for 300 pixels y.
       rotation: 'up', // Available values: 'up', 'down'. Default value: 'down'.
-      color: '#cccc99' // Default value: inverted color of background image
+      color: '#cccc99', // Default value: inverted color of background image
+      opacity: '80%' // Default value: '100%'.
     }
   },
   tweaks: { // Optional

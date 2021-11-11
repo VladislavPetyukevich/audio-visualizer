@@ -18,14 +18,65 @@ interface Size {
   height: number;
 }
 
-export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: Size, color: Color) => {
+interface MixColorProps {
+  color: Color;
+  colorOpacity: number;
+  backgroundColor: Color;
+}
+
+export const mixValues =(value1: number, value1Opacity: number, value2: number) =>
+  Math.round(value2 * (1 - value1Opacity) + value1 * value1Opacity);
+
+export const mixColors = ({
+  color,
+  colorOpacity,
+  backgroundColor,
+}: MixColorProps): Color => {
+  return {
+    red: mixValues(color.red, colorOpacity, backgroundColor.red),
+    green: mixValues(color.green, colorOpacity, backgroundColor.green),
+    blue: mixValues(color.blue, colorOpacity, backgroundColor.blue),
+  };
+};
+
+interface DrawRectPorps {
+  imageDstBuffer: BmpDecoder;
+  position: Position;
+  size: Size;
+  color: Color;
+  opacity: number;
+}
+
+export const drawRect = ({
+  imageDstBuffer,
+  position,
+  size,
+  color,
+  opacity,
+}: DrawRectPorps) => {
   for (var currY = position.y; currY < position.y + size.height; currY++) {
     for (var currX = position.x; currX < position.x + size.width; currX++) {
       var idx = (imageDstBuffer.width * currY + currX) << 2;
+      if (opacity === 1) {
+        imageDstBuffer.data[idx + 1] = color.blue;
+        imageDstBuffer.data[idx + 2] = color.green;
+        imageDstBuffer.data[idx + 3] = color.red;
+        continue;
+      }
 
-      imageDstBuffer.data[idx + 1] = color.blue;
-      imageDstBuffer.data[idx + 2] = color.green;
-      imageDstBuffer.data[idx + 3] = color.red;
+      const backgroundPixelColor: Color = {
+        red: imageDstBuffer.data[idx + 3],
+        green: imageDstBuffer.data[idx + 2],
+        blue: imageDstBuffer.data[idx + 1],
+      };
+      const resultColor = mixColors({
+        color,
+        colorOpacity: opacity,
+        backgroundColor: backgroundPixelColor,
+      });
+      imageDstBuffer.data[idx + 1] = resultColor.blue;
+      imageDstBuffer.data[idx + 2] = resultColor.green;
+      imageDstBuffer.data[idx + 3] = resultColor.red;
     }
   }
 };
@@ -38,6 +89,7 @@ interface DrawSpectrumProps {
   rotation: RotationAliasName;
   margin: number;
   color: Color;
+  opacity: number;
 }
 
 const drawSpectrum = ({
@@ -48,6 +100,7 @@ const drawSpectrum = ({
   rotation,
   margin,
   color,
+  opacity,
 }: DrawSpectrumProps) => {
   const busWidth = Math.trunc(size.width / spectrum.length);
   const left = Math.trunc(position.x);
@@ -63,7 +116,13 @@ const drawSpectrum = ({
     const rectX = left + busWidth * spectrumX;
     const rectHeight = Math.trunc(height * spectrumValue);
     const rectY = (rotation === 'up') ? top + height - rectHeight : top;
-    drawRect(imageDstBuffer, { x: rectX + margin, y: rectY }, { width: busWidth - margin / 2, height: rectHeight }, color);
+    drawRect({
+      imageDstBuffer,
+      position: { x: rectX + margin, y: rectY },
+      size: { width: busWidth - margin / 2, height: rectHeight },
+      color,
+      opacity,
+    });
   }
 };
 
@@ -75,6 +134,7 @@ interface CreateVisualizerFrameProps {
   rotation: RotationAliasName;
   margin: number;
   color: Color | string;
+  opacity: number;
 }
 
 export const createVisualizerFrame = ({
@@ -84,7 +144,8 @@ export const createVisualizerFrame = ({
   position,
   rotation,
   margin,
-  color
+  color,
+  opacity,
 }: CreateVisualizerFrameProps) => {
   const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
   imageDstBuffer.data = Buffer.from(imageDstBuffer.data);
@@ -96,7 +157,8 @@ export const createVisualizerFrame = ({
     position,
     rotation,
     margin,
-    color: rgbSpectrumColor
+    color: rgbSpectrumColor,
+    opacity,
   });
   return imageDstBuffer;
 };

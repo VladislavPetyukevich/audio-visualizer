@@ -12,6 +12,8 @@ import {
   getSpectrumXAbsolute,
   getSpectrumYAbsolute,
   getSpectrumColor,
+  getSpectrumOpacity,
+  getSpectrumOpacityParsed,
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
@@ -283,6 +285,46 @@ describe('config', function() {
       outVideo: { spectrum: { color: '#cccc99' } }
     } as Config);
     expect(result2).equal('#cccc99');
+  });
+
+  it('getSpectrumOpacity', function() {
+    const result1 = getSpectrumOpacity({
+      outVideo: {}
+    } as Config);
+    expect(result1).equal(defaults.spectrumOpacity);
+
+    const result2 = getSpectrumOpacity({
+      outVideo: { spectrum: { opacity: '69%' } }
+    } as Config);
+    expect(result2).equal('69%');
+  });
+
+  it('getSpectrumOpacityParsed', function() {
+    const result1 = getSpectrumOpacityParsed({
+      outVideo: {}
+    } as Config);
+    expect(result1).equal(parseInt(defaults.spectrumOpacity) / 100);
+
+    const result2 = getSpectrumOpacityParsed({
+      outVideo: { spectrum: { opacity: '69%' } }
+    } as Config);
+    expect(result2).equal(0.69);
+
+    const result3 = getSpectrumOpacityParsed.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { opacity: 'fake value' } }
+      } as Config
+    );
+    expect(result3).to.throw('Invalid spectrum opacity value: \'fake value\'. Use string percent value, for example \'80%\'.');
+
+    const result4 = getSpectrumOpacityParsed.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { opacity: '103%' } }
+      } as Config
+    );
+    expect(result4).to.throw('Invalid spectrum opacity value: \'103%\'. Percent values must be in range from \'0%\' to \'100%\'.');
   });
 
   it('getFfmpeg_cfr', function() {

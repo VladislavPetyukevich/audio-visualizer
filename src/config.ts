@@ -10,6 +10,7 @@ export const defaults = {
   spectrumRotation: 'down',
   spectrumBusesCount: 64,
   spectrumBusMargin: 4,
+  spectrumOpacity: '100%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -209,7 +210,26 @@ export const getSpectrumRotation = (config: Config): RotationAliasName => {
 };
 
 export const getSpectrumColor = (config: Config) =>
-  (config.outVideo.spectrum && config.outVideo.spectrum.color);
+  config.outVideo.spectrum && config.outVideo.spectrum.color;
+
+export const getSpectrumOpacity = (config: Config) =>
+  (config.outVideo.spectrum && config.outVideo.spectrum.opacity) ||
+  defaults.spectrumOpacity;
+
+export const getSpectrumOpacityParsed = (config: Config) => {
+  const spectrumOpacity = getSpectrumOpacity(config);
+  if (!checkIsPercentValue(spectrumOpacity)) {
+    throw new Error(`Invalid spectrum opacity value: '${spectrumOpacity}'. Use string percent value, for example '80%'.`);
+  }
+  const percentValue = parseInt(spectrumOpacity);
+  if (
+    (percentValue < 0) ||
+    (percentValue > 100)
+  ) {
+    throw new Error(`Invalid spectrum opacity value: '${spectrumOpacity}'. Percent values must be in range from '0%' to '100%'.`);
+  }
+  return percentValue / 100;
+};
 
 export const getFfmpeg_cfr = (config: Config) =>
   config.tweaks && config.tweaks.ffmpeg_cfr;

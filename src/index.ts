@@ -10,6 +10,7 @@ import {
   getSpectrumXAbsolute,
   getSpectrumYAbsolute,
   getSpectrumColor,
+  getSpectrumOpacityParsed,
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
@@ -44,6 +45,7 @@ export interface Config {
       y?: number | PositionAliasName;
       rotation?: RotationAliasName;
       color?: Color | string;
+      opacity?: string;
     }
   };
   tweaks?: {
@@ -99,6 +101,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
+    const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
@@ -129,7 +132,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         position: { x: spectrumX, y: spectrumY },
         rotation: spectrumRotation,
         margin: spectrumBusMargin,
-        color: spectrumColor
+        color: spectrumColor,
+        opacity: spectrumOpacity,
       });
       const frameImageBuffer = createImageBuffer(frameImage);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImageBuffer);

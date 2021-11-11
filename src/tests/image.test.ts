@@ -1,11 +1,50 @@
 import { expect } from 'chai';
 import path from 'path';
-import { drawRect, Color, createVisualizerFrame, parseImage, convertToBmp } from '../image';
+import fs from 'fs';
+import {
+  drawRect,
+  Color,
+  createVisualizerFrame,
+  parseImage,
+  convertToBmp,
+  mixValues,
+  mixColors,
+} from '../image';
 
 import frameSnapshotSpectrumDown from './snapshots/frameSnapshotSpectrumDown.json';
 import frameSnapshotSpectrumUp from './snapshots/frameSnapshotSpectrumUp.json';
+import frameSnapshotSpectrumUpOpacity50 from './snapshots/frameSnapshotSpectrumUpOpacity50.json';
 
 describe('image', function () {
+  it('mixValues', function () {
+    expect(mixValues(420, 0.69, 96)).equal(320);
+    expect(mixValues(420, 1, 96)).equal(420);
+    expect(mixValues(420, 0, 96)).equal(96);
+  });
+
+  it('mixColors', function () {
+    const result1 = mixColors({
+      color: { red: 123, green: 69, blue: 96 },
+      colorOpacity: 0.24,
+      backgroundColor: { red: 69, green: 123, blue: 42 },
+    });
+    expect(result1).deep.equal({ red: 82, green: 110, blue: 55 });
+
+    const result2 = mixColors({
+      color: { red: 123, green: 69, blue: 96 },
+      colorOpacity: 0,
+      backgroundColor: { red: 69, green: 123, blue: 42 },
+    });
+    expect(result2).deep.equal({ red: 69, green: 123, blue: 42 });
+
+    const result3 = mixColors({
+      color: { red: 123, green: 69, blue: 96 },
+      colorOpacity: 1,
+      backgroundColor: { red: 69, green: 123, blue: 42 },
+    });
+    expect(result3).deep.equal({ red: 123, green: 69, blue: 96 });
+  });
+
   it('drawRect', function () {
     const imageWidth = 10;
     const imageHeight = 10;
@@ -27,7 +66,13 @@ describe('image', function () {
       expectedImageData[pixelIndex + 3] = rectColor.red;
     });
 
-    drawRect(imageDstBuffer as any, { x: rectX, y: rectY }, { width: rectWidth, height: rectHeight }, rectColor);
+    drawRect({
+      imageDstBuffer: imageDstBuffer as any,
+      position: { x: rectX, y: rectY },
+      size: { width: rectWidth, height: rectHeight },
+      color: rectColor,
+      opacity: 1
+    });
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
   });
 
@@ -43,6 +88,7 @@ describe('image', function () {
       rotation: 'down',
       margin: 4,
       color: { red: 1, green: 1, blue: 1 },
+      opacity: 1,
     });
     const resultSpectrumDown = frameSpectrumDown.data.toJSON().data;
     expect(resultSpectrumDown).deep.equal(frameSnapshotSpectrumDown);
@@ -55,8 +101,22 @@ describe('image', function () {
       rotation: 'up',
       margin: 4,
       color: { red: 0, green: 123, blue: 69 },
+      opacity: 1,
     });
     const resultSpectrumUp = frameSpectrumUp.data.toJSON().data;
     expect(resultSpectrumUp).deep.equal(frameSnapshotSpectrumUp);
+
+    const frameSpectrumUpOpacity50 = createVisualizerFrame({
+      backgroundImageBuffer: backgroundImage,
+      spectrum: [0.1, 1, 0],
+      size: { width: 25, height: 23 },
+      position: { x: 10, y: 5 },
+      rotation: 'up',
+      margin: 4,
+      color: { red: 0, green: 123, blue: 69 },
+      opacity: 0.5,
+    });
+    const resultSpectrumUpOpacity50 = frameSpectrumUpOpacity50.data.toJSON().data;
+    expect(resultSpectrumUpOpacity50).deep.equal(frameSnapshotSpectrumUpOpacity50);
   });
 });
