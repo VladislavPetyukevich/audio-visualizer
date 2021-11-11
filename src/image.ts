@@ -164,11 +164,18 @@ export const createVisualizerFrame = ({
 };
 
 export const convertToBmp = async (filePath: string) =>
-  new Promise<Buffer>(async resolve => {
-    const image = await Jimp.read(filePath);
-    image.getBuffer("image/bmp", (err, value) => {
-      resolve(value);
-    });
+  new Promise<Buffer>(async (resolve, reject) => {
+    try {
+      const image = await Jimp.read(filePath);
+      image.getBuffer("image/bmp", (err, value) => {
+        if (err) {
+          reject(err);
+        }
+        resolve(value);
+      });
+    } catch {
+      throw new Error(`Cannot procces image file from path: ${filePath}`);
+    }
   });
 
 export const parseImage = (buffer: Buffer) => decode(buffer);
