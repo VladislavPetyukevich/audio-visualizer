@@ -94,6 +94,24 @@ describe('config', function() {
       backgroundImageWidth
     );
     expect(result4).to.throw('Invalid spectrum width value: \'69\'. Use number value or percent value in string, for example: \'30%\'.');
+
+    const result5 = getSpectrumWidthAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { width: 1 }}
+      } as Config,
+      backgroundImageWidth
+    );
+    expect(result5).to.throw('Spectrum width \'1\' is too small.');
+
+    const result6 = getSpectrumWidthAbsolute.bind(
+      undefined,
+      {
+        outVideo: { spectrum: { width: '1%' }}
+      } as Config,
+      backgroundImageWidth
+    );
+    expect(result6).to.throw('Spectrum width \'1%\' is too small.');
   });
 
   it('getSpectrumHeightAbsolute', function() {

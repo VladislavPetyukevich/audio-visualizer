@@ -3,6 +3,8 @@ import {
   getBackgroundImagePath,
   getOutVideoPath,
   getFPS,
+  getSpectrumBusesCount,
+  getSpectrumBusMargin,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
   getSpectrumXAbsolute,
@@ -81,6 +83,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       throw new Error('ffmpeg didn\'t show audio sample rate');
     }
 
+    const spectrumBusesCount = getSpectrumBusesCount();
+    const spectrumBusMargin = getSpectrumBusMargin();
     const FPS = getFPS(config);
     const spectrumWidth =
       getSpectrumWidthAbsolute(config, backgroundImage.width);
@@ -98,7 +102,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
-    const spectrumBusesCount = 64;
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
@@ -119,14 +122,15 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       const audioDataParser = () =>
         PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       const spectrum = processSpectrum(i, audioDataParser);
-      const frameImage = createVisualizerFrame(
-        backgroundImage,
+      const frameImage = createVisualizerFrame({
+        backgroundImageBuffer: backgroundImage,
         spectrum,
-        { width: spectrumWidth, height: spectrumHeight },
-        { x: spectrumX, y: spectrumY },
-        spectrumRotation,
-        spectrumColor
-      );
+        size: { width: spectrumWidth, height: spectrumHeight },
+        position: { x: spectrumX, y: spectrumY },
+        rotation: spectrumRotation,
+        margin: spectrumBusMargin,
+        color: spectrumColor
+      });
       const frameImageBuffer = createImageBuffer(frameImage);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImageBuffer);
       if (!isFrameProcessed) {

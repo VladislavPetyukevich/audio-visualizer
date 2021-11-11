@@ -30,19 +30,29 @@ export const drawRect = (imageDstBuffer: BmpDecoder, position: Position, size: S
   }
 };
 
-const drawSpectrum = (
-  imageDstBuffer: BmpDecoder,
-  spectrum: number[],
-  size: Size,
-  position: Position,
-  rotation: RotationAliasName,
-  color: Color
-) => {
+interface DrawSpectrumProps {
+  imageDstBuffer: BmpDecoder;
+  spectrum: number[];
+  size: Size;
+  position: Position;
+  rotation: RotationAliasName;
+  margin: number;
+  color: Color;
+}
+
+const drawSpectrum = ({
+  imageDstBuffer,
+  spectrum,
+  size,
+  position,
+  rotation,
+  margin,
+  color,
+}: DrawSpectrumProps) => {
   const busWidth = Math.trunc(size.width / spectrum.length);
   const left = Math.trunc(position.x);
   const top = Math.trunc(position.y);
   const height = Math.trunc(size.height);
-  const margin = 4;
 
   for (let spectrumX = 0; spectrumX < spectrum.length; spectrumX++) {
     const spectrumValue = spectrum[spectrumX];
@@ -57,12 +67,38 @@ const drawSpectrum = (
   }
 };
 
-export const createVisualizerFrame = (backgroundImageBuffer: BmpDecoder, spectrum: number[], size: Size, position: Position, rotation: RotationAliasName, color: Color | string) => {
-  const image = Object.assign({}, backgroundImageBuffer);
-  image.data = Buffer.from(image.data);
+interface CreateVisualizerFrameProps {
+  backgroundImageBuffer: BmpDecoder;
+  spectrum: number[];
+  size: Size;
+  position: Position;
+  rotation: RotationAliasName;
+  margin: number;
+  color: Color | string;
+}
+
+export const createVisualizerFrame = ({
+  backgroundImageBuffer,
+  spectrum,
+  size,
+  position,
+  rotation,
+  margin,
+  color
+}: CreateVisualizerFrameProps) => {
+  const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
+  imageDstBuffer.data = Buffer.from(imageDstBuffer.data);
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  drawSpectrum(image, spectrum, size, position, rotation, rgbSpectrumColor);
-  return image;
+  drawSpectrum({
+    imageDstBuffer,
+    spectrum,
+    size,
+    position,
+    rotation,
+    margin,
+    color: rgbSpectrumColor
+  });
+  return imageDstBuffer;
 };
 
 export const convertToBmp = async (filePath: string) =>

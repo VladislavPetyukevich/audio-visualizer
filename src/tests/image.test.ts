@@ -35,25 +35,27 @@ describe('image', function () {
     const backgroundImagePath = path.resolve('example/media/background.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
-    const frameSpectrumDown = createVisualizerFrame(
-      backgroundImage,
-      [0.5, 0, 1],
-      { width: 15, height: 20 },
-      { x: 15, y: 0 },
-      'down',
-      { red: 1, green: 1, blue: 1 }
-    );
+    const frameSpectrumDown = createVisualizerFrame({
+      backgroundImageBuffer: backgroundImage,
+      spectrum: [0.5, 0, 1],
+      size: { width: 15, height: 20 },
+      position: { x: 15, y: 0 },
+      rotation: 'down',
+      margin: 4,
+      color: { red: 1, green: 1, blue: 1 },
+    });
     const resultSpectrumDown = frameSpectrumDown.data.toJSON().data;
     expect(resultSpectrumDown).deep.equal(frameSnapshotSpectrumDown);
 
-    const frameSpectrumUp = createVisualizerFrame(
-      backgroundImage,
-      [0.1, 1, 0],
-      { width: 25, height: 23 },
-      { x: 10, y: 5 },
-      'up',
-      { red: 0, green: 123, blue: 69 }
-    );
+    const frameSpectrumUp = createVisualizerFrame({
+      backgroundImageBuffer: backgroundImage,
+      spectrum: [0.1, 1, 0],
+      size: { width: 25, height: 23 },
+      position: { x: 10, y: 5 },
+      rotation: 'up',
+      margin: 4,
+      color: { red: 0, green: 123, blue: 69 },
+    });
     const resultSpectrumUp = frameSpectrumUp.data.toJSON().data;
     expect(resultSpectrumUp).deep.equal(frameSnapshotSpectrumUp);
   });

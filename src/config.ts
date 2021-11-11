@@ -7,7 +7,9 @@ export const defaults = {
   spectrumHeight: '10%',
   spectrumX: 'center',
   spectrumY: 'top',
-  spectrumRotation: 'down'
+  spectrumRotation: 'down',
+  spectrumBusesCount: 64,
+  spectrumBusMargin: 4,
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -43,19 +45,25 @@ export const getOutVideoPath = (config: Config) =>
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
 
+export const getSpectrumBusesCount = () => defaults.spectrumBusesCount;
+
+export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
+
 const getSpectrumWidth = (config: Config) =>
   (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
   defaults.spectrumWidth;
 
 const getSpectrumSizeAbsolute = (
-  spectrumSize: SpectrumSizeValue, backgroundImageSize: number
+  spectrumSize: SpectrumSizeValue,
+  backgroundImageSize: number,
+  fieldName: string
 ) => {
   if (typeof spectrumSize === 'number') {
     return spectrumSize;
   }
   const isPercentValue = checkIsPercentValue(spectrumSize);
   if (!isPercentValue) {
-    throw new Error();
+    throw new Error(getSpectrumSizeValueErrorMessage(fieldName, spectrumSize));
   }
   const percentValue = parseInt(spectrumSize) / 100;
   return backgroundImageSize * percentValue;
@@ -70,11 +78,13 @@ export const getSpectrumWidthAbsolute = (
   config: Config, backgroundImageWidth: number
 ) => {
   const spectrumWidth = getSpectrumWidth(config);
-  try {
-    return getSpectrumSizeAbsolute(spectrumWidth, backgroundImageWidth);
-  } catch {
-    throw new Error(getSpectrumSizeValueErrorMessage('width', spectrumWidth));
+  const spectrumWidthAbsolute = getSpectrumSizeAbsolute(spectrumWidth, backgroundImageWidth, 'width');
+  const spectrumWidthWithoutMargin =
+    Math.trunc(spectrumWidthAbsolute / defaults.spectrumBusesCount) - defaults.spectrumBusMargin / 2;
+  if (spectrumWidthWithoutMargin <= 0) {
+    throw new Error(`Spectrum width '${spectrumWidth}' is too small.`);
   }
+  return spectrumWidthAbsolute;
 };
 
 const getSpectrumHeight = (config: Config) =>
@@ -85,11 +95,7 @@ export const getSpectrumHeightAbsolute = (
   config: Config, backgroundImageHeight: number
 ) => {
   const spectrumHeight = getSpectrumHeight(config);
-  try {
-    return getSpectrumSizeAbsolute(spectrumHeight, backgroundImageHeight);
-  } catch {
-    throw new Error(getSpectrumSizeValueErrorMessage('height', spectrumHeight));
-  }
+  return getSpectrumSizeAbsolute(spectrumHeight, backgroundImageHeight, 'height');
 };
 
 const getSpectrumX = (config: Config) =>
