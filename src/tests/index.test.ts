@@ -1,6 +1,6 @@
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
-import { renderAudioVisualizer, Config, PCM_FORMAT } from '../index';
+import { renderAudioVisualizer, Config } from '../index';
 import fs from 'fs';
 import { Writable, Readable } from 'stream';
 import { ChildProcessWithoutNullStreams } from 'child_process';
@@ -24,7 +24,7 @@ describe('index', function () {
     let childProcessStream: unknown = {
       stdin: new Writable(),
       stderr: new Readable(),
-      on: function (event: string, callback: Function) {
+      on: function (_: string, callback: Function) {
         exitCallback = callback;
       }
     };

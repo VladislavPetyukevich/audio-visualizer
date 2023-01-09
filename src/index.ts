@@ -18,8 +18,9 @@ import {
   getSpectrumRotation
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, createVisualizerFrame, createImageBuffer, getImageColor, invertColor, Color, convertToBmp } from './image';
+import { parseImage, createVisualizerFrame, getImageColor, invertColor, Color, convertToBmp } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
+import { createBpmEncoder } from './bpmEncoder';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -120,13 +121,15 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     });
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
+    const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
+    const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const processSpectrum = createSpectrumsProcessor(spectrumBusesCount);
     for (let i = 0; i < framesCount; i++) {
       const audioDataParser = () =>
         PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       const spectrum = processSpectrum(i, audioDataParser);
       const frameImage = createVisualizerFrame({
-        backgroundImageBuffer: backgroundImage,
+        backgroundImageBuffer,
         spectrum,
         size: { width: spectrumWidth, height: spectrumHeight },
         position: { x: spectrumX, y: spectrumY },
@@ -135,8 +138,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         color: spectrumColor,
         opacity: spectrumOpacity,
       });
-      const frameImageBuffer = createImageBuffer(frameImage);
-      const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImageBuffer);
+      const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {
         await waitDrain(ffmpegVideoWriter.stdin);
       }

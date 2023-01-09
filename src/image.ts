@@ -1,5 +1,6 @@
 import { RotationAliasName } from './index';
-import { decode, encode, BmpDecoder } from 'bmp-js';
+import { decode, BmpDecoder } from 'bmp-js';
+import { EncodedBmp } from './bpmEncoder';
 import Jimp from 'jimp';
 
 export interface Color {
@@ -39,8 +40,37 @@ export const mixColors = ({
   };
 };
 
+const getRectPixelColor = (params: {
+  imageDstBuffer: EncodedBmp;
+  pixelIndex: number;
+  color: Color;
+  opacity: number;
+}) => {
+  const {
+    imageDstBuffer,
+    pixelIndex,
+    color,
+    opacity,
+  } = params;
+  if (opacity === 1) {
+    return color;
+  }
+
+  const backgroundPixelColor: Color = {
+    blue: imageDstBuffer.data[pixelIndex],
+    green: imageDstBuffer.data[pixelIndex + 1],
+    red: imageDstBuffer.data[pixelIndex + 2],
+  };
+  const resultColor = mixColors({
+    color,
+    colorOpacity: opacity,
+    backgroundColor: backgroundPixelColor,
+  });
+  return resultColor;
+};
+
 interface DrawRectPorps {
-  imageDstBuffer: BmpDecoder;
+  imageDstBuffer: EncodedBmp;
   position: Position;
   size: Size;
   color: Color;
@@ -54,35 +84,24 @@ export const drawRect = ({
   color,
   opacity,
 }: DrawRectPorps) => {
-  for (var currY = position.y; currY < position.y + size.height; currY++) {
-    for (var currX = position.x; currX < position.x + size.width; currX++) {
-      var idx = (imageDstBuffer.width * currY + currX) << 2;
-      if (opacity === 1) {
-        imageDstBuffer.data[idx + 1] = color.blue;
-        imageDstBuffer.data[idx + 2] = color.green;
-        imageDstBuffer.data[idx + 3] = color.red;
-        continue;
-      }
-
-      const backgroundPixelColor: Color = {
-        red: imageDstBuffer.data[idx + 3],
-        green: imageDstBuffer.data[idx + 2],
-        blue: imageDstBuffer.data[idx + 1],
-      };
-      const resultColor = mixColors({
+  for (let currY = position.y; currY < position.y + size.height; currY++) {
+    for (let currX = position.x; currX < position.x + size.width; currX++) {
+      const pixelIndex = imageDstBuffer.shiftPos + currY * imageDstBuffer.rowBytes + currX * 3;
+      const pixelColor = getRectPixelColor({
+        imageDstBuffer,
+        pixelIndex,
         color,
-        colorOpacity: opacity,
-        backgroundColor: backgroundPixelColor,
+        opacity,
       });
-      imageDstBuffer.data[idx + 1] = resultColor.blue;
-      imageDstBuffer.data[idx + 2] = resultColor.green;
-      imageDstBuffer.data[idx + 3] = resultColor.red;
+      imageDstBuffer.data[pixelIndex] = pixelColor.blue;
+      imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
+      imageDstBuffer.data[pixelIndex + 2] = pixelColor.red;
     }
   }
 };
 
 interface DrawSpectrumProps {
-  imageDstBuffer: BmpDecoder;
+  imageDstBuffer: EncodedBmp;
   spectrum: number[];
   size: Size;
   position: Position;
@@ -127,7 +146,7 @@ const drawSpectrum = ({
 };
 
 interface CreateVisualizerFrameProps {
-  backgroundImageBuffer: BmpDecoder;
+  backgroundImageBuffer: EncodedBmp;
   spectrum: number[];
   size: Size;
   position: Position;
@@ -148,7 +167,8 @@ export const createVisualizerFrame = ({
   opacity,
 }: CreateVisualizerFrameProps) => {
   const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
-  imageDstBuffer.data = Buffer.from(imageDstBuffer.data);
+  imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
   drawSpectrum({
     imageDstBuffer,
@@ -179,8 +199,6 @@ export const convertToBmp = async (filePath: string) =>
   });
 
 export const parseImage = (buffer: Buffer) => decode(buffer);
-
-export const createImageBuffer = (image: BmpDecoder) => encode(image).data;
 
 export const getImageColor = (image: BmpDecoder): Color => {
   let blueSum = 0;
