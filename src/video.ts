@@ -1,6 +1,6 @@
 import { Writable } from 'stream';
 import { spawn } from 'child_process';
-import { path as ffmpegPath } from 'ffmpeg-static';
+import ffmpegPath from 'ffmpeg-static';
 
 interface FfmpegVideoWriterConfig {
   audioFilename: string;
@@ -12,6 +12,9 @@ interface FfmpegVideoWriterConfig {
 }
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg path not found');
+  }
   const crf = config.crf || '23';
   const preset = config.preset || 'medium';
   const args = [

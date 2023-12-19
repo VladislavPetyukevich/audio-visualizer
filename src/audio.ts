@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import ffmpeg from 'ffmpeg-static';
+import ffmpegPath from 'ffmpeg-static';
 import { getSpectrum } from './dsp';
 
 export const skipEvery = <T>(skipIndex: number) => (element: T, index: number) =>
@@ -87,7 +87,10 @@ export const normalizeAudioData = (PCMData: number[]) =>
   PCMData.map(num => (num - 128) / 128);
 
 export const spawnFfmpegAudioReader = (filename: string, format: string) => {
-  const ffmpegProcess = spawn(ffmpeg.path, ['-i', filename, '-f', format, '-ac', '1', '-']);
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg path not found');
+  }
+  const ffmpegProcess = spawn(ffmpegPath, ['-i', filename, '-f', format, '-ac', '1', '-']);
   return ffmpegProcess;
 };
 

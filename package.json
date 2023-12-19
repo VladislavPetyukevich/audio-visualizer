@@ -50,10 +50,10 @@
     "@jimp/bmp": "^0.9.3",
     "@jimp/png": "^0.9.3",
     "@types/bmp-js": "^0.1.0",
-    "@types/ffmpeg-static": "^2.0.0",
+    "@types/ffmpeg-static": "^3.0.3",
     "@types/sinon": "^7.5.0",
     "bmp-js": "^0.1.0",
-    "ffmpeg-static": "^2.6.0",
+    "ffmpeg-static": "^5.2.0",
     "jimp": "^0.9.3"
   }
 }
