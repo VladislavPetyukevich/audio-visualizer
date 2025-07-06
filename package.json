@@ -54,6 +54,7 @@
     "@types/sinon": "^7.5.0",
     "bmp-js": "^0.1.0",
     "ffmpeg-static": "^5.2.0",
+    "fft-js": "^0.0.12",
     "jimp": "^0.9.3"
   }
 }
