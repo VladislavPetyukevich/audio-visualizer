@@ -28,6 +28,7 @@ export const PCM_FORMAT = {
   parseFunction: bufferToUInt8
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
+const PROCESSING_BUFFER_SIZE = 1024;
 
 export interface Config {
   audio: {
@@ -110,6 +111,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
     const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
+    const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
@@ -125,8 +127,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const processSpectrum = createSpectrumsProcessor(spectrumBusesCount);
     for (let i = 0; i < framesCount; i++) {
-      const audioDataParser = () =>
-        PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
+      const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
+      processingBuffer.copyWithin(0, currentFrameData.length);
+      processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
+
+      const audioDataParser = () => Array.from(processingBuffer);
       const spectrum = processSpectrum(i, audioDataParser);
       const frameImage = createVisualizerFrame({
         backgroundImageBuffer,
