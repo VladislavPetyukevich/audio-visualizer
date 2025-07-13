@@ -34,16 +34,30 @@ export const correctPeaks = (spectrums: number[], peaks: number[]) => {
   return resultSpectrum;
 };
 
-export const smoothValues = (spectrums: number[], prevSpectrums?: number[]) => {
-  if (!prevSpectrums) {
+// Number of previous frames to use for smoothing
+const SPECTRUM_HISTORY_SIZE = 2;
+
+export const smoothValues = (spectrums: number[], prevSpectrums?: number[][]) => {
+  if (!prevSpectrums || !prevSpectrums.length) {
     return spectrums;
   }
   const resultSpectrum: number[] = [];
-  for(let i = 0; i < spectrums.length; i++) {
+  
+  for (let i = 0; i < spectrums.length; i++) {
     const currValue = spectrums[i];
-    const currPrevValue = prevSpectrums[i] || 0;
-    const avgValue = (currValue + currPrevValue) / 2;
-    resultSpectrum.push(avgValue);
+    // Calculate weighted average of current and previous values
+    // More recent values have higher weights
+    let weightedSum = currValue;
+    let totalWeight = 1;
+    
+    for (let j = 0; j < prevSpectrums.length; j++) {
+      const weight = 1 / (j + 2); // Decreasing weights for older values
+      const prevValue = prevSpectrums[j][i] || 0;
+      weightedSum += prevValue * weight;
+      totalWeight += weight;
+    }
+    
+    resultSpectrum.push(weightedSum / totalWeight);
   }
   return resultSpectrum;
 };
@@ -51,7 +65,7 @@ export const smoothValues = (spectrums: number[], prevSpectrums?: number[]) => {
 export const createSpectrumsProcessor = (busesCount: number) => {
   let prevAudioDataNormalized: number[] = [];
   let prevPeaks: number[] = [];
-  let prevSpectrums: number[] = [];
+  let prevSpectrums: number[][] = [];
   const skipFrameIndex = 2;
 
   return (frameIndex: number, parseAudioData: () => number[]) => {
@@ -63,12 +77,34 @@ export const createSpectrumsProcessor = (busesCount: number) => {
     prevAudioDataNormalized = audioDataNomrmalized;
 
     const spectrum = getSpectrum(audioDataNomrmalized);
-    const skipIndex = Math.trunc(spectrum.length / busesCount);
-    const spectrumReduced = spectrum.filter(skipEvery(skipIndex));
+    const busSize = Math.floor(spectrum.length / busesCount);
+    const spectrumReduced: number[] = [];
+    
+    // Accumulate and average values for each bus
+    for (let busIndex = 0; busIndex < busesCount; busIndex++) {
+      const startIndex = busIndex * busSize;
+      const endIndex = (busIndex === busesCount - 1) ? spectrum.length : (busIndex + 1) * busSize;
+      let sum = 0;
+      let count = 0;
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        sum += spectrum[i];
+        count++;
+      }
+      
+      spectrumReduced.push(sum / count);
+    }
+
     const peaks = getPeaks(spectrumReduced, prevPeaks);
     const correctedSpectrum = correctPeaks(spectrumReduced, peaks);
     const smoothSpectrum = smoothValues(correctedSpectrum, prevSpectrums);
-    prevSpectrums = smoothSpectrum;
+    
+    // Update spectrum history
+    prevSpectrums.unshift(smoothSpectrum);
+    if (prevSpectrums.length > SPECTRUM_HISTORY_SIZE) {
+      prevSpectrums.pop();
+    }
+    
     prevPeaks = peaks;
 
     return smoothSpectrum;

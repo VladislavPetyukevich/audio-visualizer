@@ -22,11 +22,12 @@ export const getSpectrum = (PCMData: number[]) => {
   
   // Convert complex numbers to magnitudes
   const spectrum = phasors.map(([real, imag]: [number, number]) => Math.sqrt(real * real + imag * imag));
-  
+  spectrum.length = Math.max(spectrum.length / 16, 1);
+
   // Apply the same frequency-dependent scaling as before
-  // for (let i = 0; i < spectrum.length; i++) {
-  //   // attenuates low freqs and boosts highs
-  //   spectrum[i] *= -1 * Math.log((signalLength / 2 - i) * (0.5 / signalLength / 2)) * signalLength;
-  // }
+  for (let i = 0; i < spectrum.length; i++) {
+    // attenuates low freqs and boosts highs
+    spectrum[i] *= -1 * Math.log((signalLength / 2 - i) * (0.5 / signalLength / 2)) * signalLength;
+  }
   return spectrum;
 }

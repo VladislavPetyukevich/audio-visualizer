@@ -28,7 +28,7 @@ export const PCM_FORMAT = {
   parseFunction: bufferToUInt8
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
-const PROCESSING_BUFFER_SIZE = 1024;
+const PROCESSING_BUFFER_SIZE = Math.pow(2, 12);
 
 export interface Config {
   audio: {
