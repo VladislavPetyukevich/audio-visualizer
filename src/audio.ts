@@ -34,63 +34,45 @@ export const correctPeaks = (spectrums: number[], peaks: number[]) => {
   return resultSpectrum;
 };
 
-// Number of previous frames to use for smoothing
-const SPECTRUM_HISTORY_SIZE = 2;
-
-export const smoothValues = (spectrums: number[], prevSpectrums?: number[][]) => {
-  if (!prevSpectrums || !prevSpectrums.length) {
-    return spectrums;
-  }
-  const resultSpectrum: number[] = [];
-  
-  for (let i = 0; i < spectrums.length; i++) {
-    const currValue = spectrums[i];
-    // Calculate weighted average of current and previous values
-    // More recent values have higher weights
-    let weightedSum = currValue;
-    let totalWeight = 1;
-    
-    for (let j = 0; j < prevSpectrums.length; j++) {
-      const weight = 1 / (j + 2); // Decreasing weights for older values
-      const prevValue = prevSpectrums[j][i] || 0;
-      weightedSum += prevValue * weight;
-      totalWeight += weight;
-    }
-    
-    resultSpectrum.push(weightedSum / totalWeight);
-  }
-  return resultSpectrum;
+const oldMax = 1;
+const newMin = 0.6;
+const getInterpolationFactor = (skippedFramesCount: number, skipFramesCount: number) => {
+  const interpolationFactor = 1 - (skippedFramesCount / skipFramesCount);
+  const interpolationFactorInRange = (interpolationFactor * (oldMax - newMin)) + newMin;
+  return interpolationFactorInRange;
 };
+
+const skipFramesCount = 1;
 
 export const createSpectrumsProcessor = (sampleRate: number) => {
   let prevAudioDataNormalized: number[] = [];
   let prevPeaks: number[] = [];
-  let prevSpectrums: number[][] = [];
-  const skipFrameIndex = 2;
+  let skippedFramesCount = 0;
+  let targetSpectrum: number[] = [];
+  let previousSpectrum: number[] = [];
 
-  return (frameIndex: number, parseAudioData: () => number[]) => {
-    const isFrameSkiped = 
-      frameIndex && (frameIndex % skipFrameIndex === 0);
-    const audioDataNomrmalized = isFrameSkiped ?
-      prevAudioDataNormalized :
-      normalizeAudioData(parseAudioData());
-    prevAudioDataNormalized = audioDataNomrmalized;
+  return (parseAudioData: () => number[]) => {
+    if (skippedFramesCount === 0) {
+      skippedFramesCount = skipFramesCount;
+      const audioDataNomrmalized = normalizeAudioData(parseAudioData());
+      prevAudioDataNormalized = audioDataNomrmalized;
 
-    const spectrum = getSpectrum(audioDataNomrmalized, sampleRate);
-
-    const peaks = getPeaks(spectrum, prevPeaks);
-    const correctedSpectrum = correctPeaks(spectrum, peaks);
-    const smoothSpectrum = smoothValues(correctedSpectrum, prevSpectrums);
-    
-    // Update spectrum history
-    prevSpectrums.unshift(smoothSpectrum);
-    if (prevSpectrums.length > SPECTRUM_HISTORY_SIZE) {
-      prevSpectrums.pop();
+      const spectrum = getSpectrum(audioDataNomrmalized, sampleRate);
+      const peaks = getPeaks(spectrum, prevPeaks);
+      const correctedSpectrum = correctPeaks(spectrum, peaks);
+     
+      prevPeaks = peaks;
+      previousSpectrum = [...targetSpectrum];
+      targetSpectrum = correctedSpectrum;
+    } else {
+      skippedFramesCount--;
     }
-    
-    prevPeaks = peaks;
-
-    return smoothSpectrum;
+    const interpolationFactor = getInterpolationFactor(skippedFramesCount, skipFramesCount);
+    const interpolatedSpectrum = targetSpectrum.map((target, i) => {
+      const prev = previousSpectrum[i] || target;
+      return prev + (target - prev) * interpolationFactor;
+    });
+    return interpolatedSpectrum;
   };
 };
 

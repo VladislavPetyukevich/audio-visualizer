@@ -125,14 +125,14 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
-    const processSpectrum = createSpectrumsProcessor(spectrumBusesCount);
+    const processSpectrum = createSpectrumsProcessor(sampleRate);
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);
       processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
 
       const audioDataParser = () => Array.from(processingBuffer);
-      const spectrum = processSpectrum(i, audioDataParser);
+      const spectrum = processSpectrum(audioDataParser);
       const frameImage = createVisualizerFrame({
         backgroundImageBuffer,
         spectrum,

@@ -8,7 +8,6 @@ import {
   skipEvery,
   getPeaks,
   correctPeaks,
-  smoothValues,
   createSpectrumsProcessor,
 } from '../audio';
 import { createSandbox } from 'sinon';
@@ -85,19 +84,13 @@ describe('audio', function () {
     expect(result).deep.equal(expected);
   });
 
-  it('smoothValues', () => {
-    const spectrums = [1, 2, 3, 4];
-    const prevSpectrums = [[2, 4, 6, 3], [6, 4, 6, 3]];
-    const result = smoothValues(spectrums, prevSpectrums);
-    expect(result).to.have.length(4);
-  });
 
   it('createSpectrumsProcessor', () => {
     const spectrumsProcessor = createSpectrumsProcessor(44100);
     
-    const frame0 = spectrumsProcessor(0, () => ([1, 2, 3, 4]));
+    const frame0 = spectrumsProcessor(() => ([1, 2, 3, 4]));
     expect(frame0).to.have.length(24);
-    const frame1 = spectrumsProcessor(1, () => ([2, 2, 6, 2]));
+    const frame1 = spectrumsProcessor(() => ([2, 2, 6, 2]));
     expect(frame1).to.have.length(24);
   });
 });
