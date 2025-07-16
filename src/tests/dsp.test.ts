@@ -18,7 +18,7 @@ describe('fft', function () {
   it('getSpectrum', function () {
     const signal = Array(Math.pow(2, 12)).fill(1);
 
-    const result = getSpectrum(signal);
-    expect(result).to.have.length(256);
+    const result = getSpectrum(signal, 44100);
+    expect(result).to.have.length(24);
   });
 });

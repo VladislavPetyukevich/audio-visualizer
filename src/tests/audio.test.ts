@@ -93,12 +93,11 @@ describe('audio', function () {
   });
 
   it('createSpectrumsProcessor', () => {
-    const busesCount = 2;
-    const spectrumsProcessor = createSpectrumsProcessor(busesCount);
+    const spectrumsProcessor = createSpectrumsProcessor(44100);
     
     const frame0 = spectrumsProcessor(0, () => ([1, 2, 3, 4]));
-    expect(frame0).to.have.length(2);
+    expect(frame0).to.have.length(24);
     const frame1 = spectrumsProcessor(1, () => ([2, 2, 6, 2]));
-    expect(frame1).to.have.length(2);
+    expect(frame1).to.have.length(24);
   });
 });

@@ -62,7 +62,7 @@ export const smoothValues = (spectrums: number[], prevSpectrums?: number[][]) =>
   return resultSpectrum;
 };
 
-export const createSpectrumsProcessor = (busesCount: number) => {
+export const createSpectrumsProcessor = (sampleRate: number) => {
   let prevAudioDataNormalized: number[] = [];
   let prevPeaks: number[] = [];
   let prevSpectrums: number[][] = [];
@@ -76,27 +76,10 @@ export const createSpectrumsProcessor = (busesCount: number) => {
       normalizeAudioData(parseAudioData());
     prevAudioDataNormalized = audioDataNomrmalized;
 
-    const spectrum = getSpectrum(audioDataNomrmalized);
-    const busSize = Math.floor(spectrum.length / busesCount);
-    const spectrumReduced: number[] = [];
-    
-    // Accumulate and average values for each bus
-    for (let busIndex = 0; busIndex < busesCount; busIndex++) {
-      const startIndex = busIndex * busSize;
-      const endIndex = (busIndex === busesCount - 1) ? spectrum.length : (busIndex + 1) * busSize;
-      let sum = 0;
-      let count = 0;
-      
-      for (let i = startIndex; i < endIndex; i++) {
-        sum += spectrum[i];
-        count++;
-      }
-      
-      spectrumReduced.push(sum / count);
-    }
+    const spectrum = getSpectrum(audioDataNomrmalized, sampleRate);
 
-    const peaks = getPeaks(spectrumReduced, prevPeaks);
-    const correctedSpectrum = correctPeaks(spectrumReduced, peaks);
+    const peaks = getPeaks(spectrum, prevPeaks);
+    const correctedSpectrum = correctPeaks(spectrum, peaks);
     const smoothSpectrum = smoothValues(correctedSpectrum, prevSpectrums);
     
     // Update spectrum history
