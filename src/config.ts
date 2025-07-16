@@ -10,7 +10,7 @@ export const defaults = {
   spectrumRotation: 'down',
   spectrumBusesCount: 64,
   spectrumBusMargin: 4,
-  spectrumOpacity: '100%',
+  spectrumOpacity: '70%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
