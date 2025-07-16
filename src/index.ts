@@ -125,7 +125,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
-    const processSpectrum = createSpectrumsProcessor(sampleRate);
+    const skipFramesCount = FPS < 45 ? 1 : 2;
+    const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);

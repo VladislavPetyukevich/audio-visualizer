@@ -42,9 +42,7 @@ const getInterpolationFactor = (skippedFramesCount: number, skipFramesCount: num
   return interpolationFactorInRange;
 };
 
-const skipFramesCount = 1;
-
-export const createSpectrumsProcessor = (sampleRate: number) => {
+export const createSpectrumsProcessor = (sampleRate: number, skipFramesCount: number) => {
   let prevAudioDataNormalized: number[] = [];
   let prevPeaks: number[] = [];
   let skippedFramesCount = 0;
