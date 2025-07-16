@@ -1,4 +1,3 @@
-// @ts-ignore
 import { fft, util } from 'fft-js';
 
 export interface SpectrumPoint {

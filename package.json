@@ -9,7 +9,7 @@
     "src/"
   ],
   "scripts": {
-    "test": "mocha -r ts-node/register src/**/*.test.ts",
+    "test": "ts-mocha -p tsconfig.json src/**/*.test.ts",
     "dev": "ts-node-dev --respawn --transpileOnly ./example/example.ts",
     "prebuild": "rimraf dist",
     "build": "tsc -m CommonJS",
@@ -37,6 +37,7 @@
     "mocha": "^6.2.3",
     "rimraf": "^3.0.2",
     "sinon": "^7.5.0",
+    "ts-mocha": "^11.1.0",
     "ts-node": "^8.5.0",
     "ts-node-dev": "^1.0.0-pre.43",
     "typescript": "^3.7.2"
