@@ -117,13 +117,11 @@ describe('config', function() {
   });
 
   it('getSpectrumHeightAbsolute', function() {
-    const backgroundImageHeight = 768;
+    const backgroundImageHeight = 720;
     const result1 = getSpectrumHeightAbsolute({
       outVideo: {}
     } as Config, backgroundImageHeight);
-    expect(result1).equal(
-      backgroundImageHeight * (parseInt(defaults.spectrumHeight) / 100)
-    );
+    expect(result1).equal(80);
 
     const result2 = getSpectrumHeightAbsolute({
       outVideo: { spectrum: { height: 420 }}

@@ -42,7 +42,7 @@ describe('index', function () {
         path: 'audioPath'
       },
       image: {
-        path: 'example/media/background.png'
+        path: 'example/media/horses.png'
       },
       outVideo: {
         path: 'outVideoPath',

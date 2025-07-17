@@ -2,15 +2,15 @@ import path from 'path';
 import { Config, SpectrumSizeValue, PositionAliasName, RotationAliasName } from './index';
 
 export const defaults = {
-  fps: 60,
-  spectrumWidth: '40%',
-  spectrumHeight: '10%',
+  fps: 30,
+  spectrumWidth: '33%',
+  spectrumHeight: 80,
   spectrumX: 'center',
   spectrumY: 'top',
   spectrumRotation: 'down',
   spectrumBusesCount: 64,
-  spectrumBusMargin: 4,
-  spectrumOpacity: '70%',
+  spectrumBusMargin: 8,
+  spectrumOpacity: '100%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
