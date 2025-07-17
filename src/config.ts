@@ -4,13 +4,14 @@ import { Config, SpectrumSizeValue, PositionAliasName, RotationAliasName } from 
 export const defaults = {
   fps: 30,
   spectrumWidth: '33%',
-  spectrumHeight: 80,
+  spectrumHeight: 80 * 2,
   spectrumX: 'center',
-  spectrumY: 'top',
-  spectrumRotation: 'down',
+  spectrumY: 'middle',
+  spectrumRotation: 'up',
+  // spectrumRotation: 'mirror',
   spectrumBusesCount: 64,
-  spectrumBusMargin: 8,
-  spectrumOpacity: '100%',
+  spectrumBusMargin: 12,
+  spectrumOpacity: '80%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -29,7 +30,7 @@ const postitionAliases: PositionAlias[] = [
   { name: 'bottom', value: 1 },
 ];
 
-export const rotationAliasValues = ['up', 'down'] as const;
+export const rotationAliasValues = ['up', 'down', 'mirror'] as const;
 
 export const checkIsPercentValue = (value: string) =>
   RegExp(/\d+%/).test(value)

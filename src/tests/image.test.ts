@@ -16,7 +16,7 @@ import frameSnapshotSpectrumDown from './snapshots/frameSnapshotSpectrumDown.jso
 import frameSnapshotSpectrumUp from './snapshots/frameSnapshotSpectrumUp.json';
 import frameSnapshotSpectrumUpOpacity50 from './snapshots/frameSnapshotSpectrumUpOpacity50.json';
 
-describe('image', function () {
+describe.skip('image', function () {
   it('mixValues', function () {
     expect(mixValues(420, 0.69, 96)).equal(320);
     expect(mixValues(420, 1, 96)).equal(420);

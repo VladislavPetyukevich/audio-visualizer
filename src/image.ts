@@ -170,16 +170,50 @@ export const createVisualizerFrame = ({
   imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
 
   const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  drawSpectrum({
-    imageDstBuffer,
-    spectrum,
-    size,
-    position,
-    rotation,
-    margin,
-    color: rgbSpectrumColor,
-    opacity,
-  });
+  if (rotation === 'mirror') {
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size: { width: size.width, height: Math.trunc(size.height / 2) },
+      position: { x: position.x, y: position.y - Math.trunc(size.height / 4)},
+      rotation: 'up',
+      margin,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size: { width: size.width, height: Math.trunc(size.height / 2) },
+      position: { x: position.x, y: position.y + Math.trunc(size.height / 4) },
+      rotation: 'down',
+      margin,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+  } else {
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size,
+      position: { x: position.x + 4, y: position.y + 4 },
+      rotation,
+      margin,
+      color: rgbSpectrumColor,
+      opacity: opacity * 0.5,
+    });
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size,
+      position,
+      rotation,
+      margin,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+  }
+  
   return imageDstBuffer;
 };
 
