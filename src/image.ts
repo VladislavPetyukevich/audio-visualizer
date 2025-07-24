@@ -122,6 +122,16 @@ const getRectY = (rotation: RotationAliasName, top: number, height: number, rect
   }
 };
 
+const minRectHeight = 2;
+
+const getRectHeight = (height: number, spectrumValue: number) => {
+  const rectHeight = Math.trunc(height * spectrumValue);
+  if (rectHeight < minRectHeight) {
+    return minRectHeight;
+  }
+  return rectHeight;
+};
+
 const drawSpectrum = ({
   imageDstBuffer,
   spectrum,
@@ -144,7 +154,7 @@ const drawSpectrum = ({
     }
 
     const rectX = left + busWidth * spectrumX;
-    const rectHeight = Math.trunc(height * spectrumValue);
+    const rectHeight = getRectHeight(height, spectrumValue);
     const rectY = getRectY(rotation, top, height, rectHeight);
     drawRect({
       imageDstBuffer,
