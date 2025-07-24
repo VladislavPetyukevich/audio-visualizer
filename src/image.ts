@@ -111,6 +111,17 @@ interface DrawSpectrumProps {
   opacity: number;
 }
 
+const getRectY = (rotation: RotationAliasName, top: number, height: number, rectHeight: number) => {
+  switch (rotation) {
+    case 'up':
+      return top + height - rectHeight;
+    case 'mirror':
+      return top + Math.trunc((height - rectHeight) / 2);
+    default:
+      return top;
+  }
+};
+
 const drawSpectrum = ({
   imageDstBuffer,
   spectrum,
@@ -134,7 +145,7 @@ const drawSpectrum = ({
 
     const rectX = left + busWidth * spectrumX;
     const rectHeight = Math.trunc(height * spectrumValue);
-    const rectY = (rotation === 'up') ? top + height - rectHeight : top;
+    const rectY = getRectY(rotation, top, height, rectHeight);
     drawRect({
       imageDstBuffer,
       position: { x: rectX + margin, y: rectY },
@@ -171,53 +182,31 @@ export const createVisualizerFrame = ({
   const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
   imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
 
-  const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  if (rotation === 'mirror') {
-    drawSpectrum({
-      imageDstBuffer,
-      spectrum,
-      size: { width: size.width, height: Math.trunc(size.height / 2) },
-      position: { x: position.x, y: position.y - Math.trunc(size.height / 4)},
-      rotation: 'up',
-      margin,
-      color: rgbSpectrumColor,
-      opacity,
-    });
-    drawSpectrum({
-      imageDstBuffer,
-      spectrum,
-      size: { width: size.width, height: Math.trunc(size.height / 2) },
-      position: { x: position.x, y: position.y + Math.trunc(size.height / 4) },
-      rotation: 'down',
-      margin,
-      color: rgbSpectrumColor,
-      opacity,
-    });
-  } else {
-    if (volumeEffect) {
-      drawSpectrum({
-       imageDstBuffer,
-       spectrum,
-       size,
-       position: { x: position.x + 4, y: position.y + 4 },
-       rotation,
-       margin,
-       color: rgbSpectrumColor,
-       opacity: opacity * 0.5,
-      }); 
-    }
-    drawSpectrum({
-      imageDstBuffer,
-      spectrum,
-      size,
-      position,
-      rotation,
-      margin,
-      color: rgbSpectrumColor,
-      opacity,
-    });
-  }
   
+  const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+  if (volumeEffect) {
+    drawSpectrum({
+     imageDstBuffer,
+     spectrum,
+     size,
+     position: { x: position.x + 4, y: position.y + 4 },
+     rotation,
+     margin,
+     color: rgbSpectrumColor,
+     opacity: opacity * 0.5,
+    }); 
+  }
+  drawSpectrum({
+    imageDstBuffer,
+    spectrum,
+    size,
+    position,
+    rotation,
+    margin,
+    color: rgbSpectrumColor,
+    opacity,
+  });
+
   return imageDstBuffer;
 };
 
