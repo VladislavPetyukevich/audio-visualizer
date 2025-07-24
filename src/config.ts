@@ -8,6 +8,7 @@ export const defaults = {
   spectrumX: 'center',
   spectrumY: 'middle',
   spectrumRotation: 'up',
+  volumeEffect: true,
   // spectrumRotation: 'mirror',
   spectrumBusesCount: 64,
   spectrumBusMargin: 12,
@@ -54,6 +55,9 @@ export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 const getSpectrumWidth = (config: Config) =>
   (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
   defaults.spectrumWidth;
+
+export const getSpectrumVolumeEffect = (config: Config) =>
+  config.outVideo.spectrum?.volumeEffect || defaults.volumeEffect;
 
 const getSpectrumSizeAbsolute = (
   spectrumSize: SpectrumSizeValue,

@@ -15,7 +15,8 @@ import {
   getFfmpeg_preset,
   getFrame_processing_delay,
   rotationAliasValues,
-  getSpectrumRotation
+  getSpectrumRotation,
+  getSpectrumVolumeEffect,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, createVisualizerFrame, getImageColor, invertColor, Color, convertToBmp } from './image';
@@ -46,6 +47,7 @@ export interface Config {
       x?: number | PositionAliasName;
       y?: number | PositionAliasName;
       rotation?: RotationAliasName;
+      volumeEffect?: boolean;
       color?: Color | string;
       opacity?: string;
     }
@@ -103,6 +105,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
+    const spectrumVolumeEffect = getSpectrumVolumeEffect(config);
     const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
@@ -143,6 +146,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         margin: spectrumBusMargin,
         color: spectrumColor,
         opacity: spectrumOpacity,
+        volumeEffect: spectrumVolumeEffect,
       });
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {

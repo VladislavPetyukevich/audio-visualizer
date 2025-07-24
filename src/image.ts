@@ -154,6 +154,7 @@ interface CreateVisualizerFrameProps {
   margin: number;
   color: Color | string;
   opacity: number;
+  volumeEffect?: boolean;
 }
 
 export const createVisualizerFrame = ({
@@ -165,6 +166,7 @@ export const createVisualizerFrame = ({
   margin,
   color,
   opacity,
+  volumeEffect,
 }: CreateVisualizerFrameProps) => {
   const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
   imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
@@ -192,16 +194,18 @@ export const createVisualizerFrame = ({
       opacity,
     });
   } else {
-    drawSpectrum({
-      imageDstBuffer,
-      spectrum,
-      size,
-      position: { x: position.x + 4, y: position.y + 4 },
-      rotation,
-      margin,
-      color: rgbSpectrumColor,
-      opacity: opacity * 0.5,
-    });
+    if (volumeEffect) {
+      drawSpectrum({
+       imageDstBuffer,
+       spectrum,
+       size,
+       position: { x: position.x + 4, y: position.y + 4 },
+       rotation,
+       margin,
+       color: rgbSpectrumColor,
+       opacity: opacity * 0.5,
+      }); 
+    }
     drawSpectrum({
       imageDstBuffer,
       spectrum,
