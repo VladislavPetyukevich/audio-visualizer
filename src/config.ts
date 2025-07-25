@@ -9,13 +9,15 @@ export const defaults = {
   spectrumY: 'middle',
   // spectrumRotation: 'up',
   spectrumRotation: 'mirror',
-  volumeEffect: true,
+  // spectrumEffect: 'volume',
   spectrumBusesCount: 64,
   spectrumBusMargin: 12,
   spectrumOpacity: '80%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
+
+export type SpectrumEffect = 'volume' | 'smooth';
 
 interface PositionAlias {
   name: PositionAliasName;
@@ -48,16 +50,14 @@ export const getOutVideoPath = (config: Config) =>
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
 
-export const getSpectrumBusesCount = () => defaults.spectrumBusesCount;
-
 export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 
 const getSpectrumWidth = (config: Config) =>
   (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
   defaults.spectrumWidth;
 
-export const getSpectrumVolumeEffect = (config: Config) =>
-  config.outVideo.spectrum?.volumeEffect || defaults.volumeEffect;
+export const getSpectrumEffect = (config: Config) =>
+  config.outVideo.spectrum?.effect;
 
 const getSpectrumSizeAbsolute = (
   spectrumSize: SpectrumSizeValue,

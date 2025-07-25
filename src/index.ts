@@ -3,7 +3,6 @@ import {
   getBackgroundImagePath,
   getOutVideoPath,
   getFPS,
-  getSpectrumBusesCount,
   getSpectrumBusMargin,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
@@ -16,10 +15,11 @@ import {
   getFrame_processing_delay,
   rotationAliasValues,
   getSpectrumRotation,
-  getSpectrumVolumeEffect,
+  getSpectrumEffect,
+  SpectrumEffect,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, createVisualizerFrame, getImageColor, invertColor, Color, convertToBmp } from './image';
+import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 import { createBpmEncoder } from './bpmEncoder';
 
@@ -47,7 +47,7 @@ export interface Config {
       x?: number | PositionAliasName;
       y?: number | PositionAliasName;
       rotation?: RotationAliasName;
-      volumeEffect?: boolean;
+      effect?: SpectrumEffect;
       color?: Color | string;
       opacity?: string;
     }
@@ -89,7 +89,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       throw new Error('ffmpeg didn\'t show audio sample rate');
     }
 
-    const spectrumBusesCount = getSpectrumBusesCount();
     const spectrumBusMargin = getSpectrumBusMargin();
     const FPS = getFPS(config);
     const spectrumWidth =
@@ -105,7 +104,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
-    const spectrumVolumeEffect = getSpectrumVolumeEffect(config);
+    const spectrumEffect = getSpectrumEffect(config);
     const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
@@ -130,6 +129,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
+    const createVisualizerFrame = createVisualizerFrameGenerator();
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);
@@ -146,7 +146,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         margin: spectrumBusMargin,
         color: spectrumColor,
         opacity: spectrumOpacity,
-        volumeEffect: spectrumVolumeEffect,
+        spectrumEffect,
       });
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {

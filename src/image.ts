@@ -2,6 +2,7 @@ import { RotationAliasName } from './index';
 import { decode, BmpDecoder } from 'bmp-js';
 import { EncodedBmp } from './bpmEncoder';
 import Jimp from 'jimp';
+import { SpectrumEffect } from './config';
 
 export interface Color {
   red: number;
@@ -175,49 +176,67 @@ interface CreateVisualizerFrameProps {
   margin: number;
   color: Color | string;
   opacity: number;
-  volumeEffect?: boolean;
+  spectrumEffect?: SpectrumEffect;
 }
 
-export const createVisualizerFrame = ({
-  backgroundImageBuffer,
-  spectrum,
-  size,
-  position,
-  rotation,
-  margin,
-  color,
-  opacity,
-  volumeEffect,
-}: CreateVisualizerFrameProps) => {
-  const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
-  imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+export const createVisualizerFrameGenerator = () => {
+  let prevSpectrum: number[] | null = null;
 
-  
-  const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  if (volumeEffect) {
-    drawSpectrum({
-     imageDstBuffer,
-     spectrum,
-     size,
-     position: { x: position.x + 4, y: position.y + 4 },
-     rotation,
-     margin,
-     color: rgbSpectrumColor,
-     opacity: opacity * 0.5,
-    }); 
-  }
-  drawSpectrum({
-    imageDstBuffer,
+  return ({
+    backgroundImageBuffer,
     spectrum,
     size,
     position,
     rotation,
     margin,
-    color: rgbSpectrumColor,
+    color,
     opacity,
-  });
-
-  return imageDstBuffer;
+    spectrumEffect,
+  }: CreateVisualizerFrameProps) => {
+    const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
+    imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+  
+    
+    const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+    if (spectrumEffect === 'volume') {
+      drawSpectrum({
+       imageDstBuffer,
+       spectrum,
+       size,
+       position: { x: position.x + 4, y: position.y + 4 },
+       rotation,
+       margin,
+       color: rgbSpectrumColor,
+       opacity: opacity * 0.5,
+      }); 
+    }
+    if (spectrumEffect === 'smooth' && prevSpectrum) {
+      drawSpectrum({
+       imageDstBuffer,
+       spectrum: prevSpectrum,
+       size,
+       position,
+       rotation,
+       margin,
+       color: rgbSpectrumColor,
+       opacity: opacity * 0.3,
+      }); 
+    }
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size,
+      position,
+      rotation,
+      margin,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+  
+    prevSpectrum = spectrum;
+  
+    return imageDstBuffer;
+  };
 };
 
 export const convertToBmp = async (filePath: string) =>
