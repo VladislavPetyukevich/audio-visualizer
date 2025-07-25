@@ -1,5 +1,6 @@
 import path from 'path';
 import { Config, SpectrumSizeValue, PositionAliasName, RotationAliasName } from './index';
+import { FREQUENCY_BANDS } from './dsp';
 
 export const defaults = {
   fps: 30,
@@ -8,7 +9,6 @@ export const defaults = {
   spectrumX: 'center',
   spectrumY: 'middle',
   spectrumRotation: 'mirror',
-  spectrumBusesCount: 64,
   spectrumBusMargin: 12,
   spectrumOpacity: '80%',
 };
@@ -84,7 +84,7 @@ export const getSpectrumWidthAbsolute = (
   const spectrumWidth = getSpectrumWidth(config);
   const spectrumWidthAbsolute = getSpectrumSizeAbsolute(spectrumWidth, backgroundImageWidth, 'width');
   const spectrumWidthWithoutMargin =
-    Math.trunc(spectrumWidthAbsolute / defaults.spectrumBusesCount) - defaults.spectrumBusMargin / 2;
+    Math.trunc(spectrumWidthAbsolute / FREQUENCY_BANDS.length) - defaults.spectrumBusMargin / 2;
   if (spectrumWidthWithoutMargin <= 0) {
     throw new Error(`Spectrum width '${spectrumWidth}' is too small.`);
   }
