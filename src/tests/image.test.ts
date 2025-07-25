@@ -77,7 +77,8 @@ describe('image', function () {
   });
 
   it('createVisualizerFrame', async function () {
-    const backgroundImagePath = path.resolve('example/media/background.png');
+    const expectedImageLength = 6220854;
+    const backgroundImagePath = path.resolve('example/media/horses.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
@@ -94,7 +95,7 @@ describe('image', function () {
       opacity: 1,
     });
     const resultSpectrumDown = frameSpectrumDown.data.toJSON().data;
-    expect(resultSpectrumDown).to.have.length(817974);
+    expect(resultSpectrumDown).to.have.length(expectedImageLength);
 
     const frameSpectrumUp = createVisualizerFrame({
       backgroundImageBuffer,
@@ -107,7 +108,7 @@ describe('image', function () {
       opacity: 1,
     });
     const resultSpectrumUp = frameSpectrumUp.data.toJSON().data;
-    expect(resultSpectrumUp).to.have.length(817974);
+    expect(resultSpectrumUp).to.have.length(expectedImageLength);
 
     const frameSpectrumMirror = createVisualizerFrame({
       backgroundImageBuffer,
@@ -120,7 +121,7 @@ describe('image', function () {
       opacity: 1,
     });
     const resultSpectrumMirror = frameSpectrumMirror.data.toJSON().data;
-    expect(resultSpectrumMirror).to.have.length(817974);
+    expect(resultSpectrumMirror).to.have.length(expectedImageLength);
 
     const frameSpectrumUpOpacity50 = createVisualizerFrame({
       backgroundImageBuffer,
@@ -133,6 +134,6 @@ describe('image', function () {
       opacity: 0.5,
     });
     const resultSpectrumUpOpacity50 = frameSpectrumUpOpacity50.data.toJSON().data;
-    expect(resultSpectrumUpOpacity50).to.have.length(817974);
+    expect(resultSpectrumUpOpacity50).to.have.length(expectedImageLength);
   });
 });
