@@ -6,6 +6,9 @@
     "path": "example/media/audio.wav"
   },
   "outVideo": {
-    "path": "example/media/out.mp4"
+    "path": "example/media/out.mp4",
+    "spectrum": {
+      "effect": "volume"
+    }
   }
 }
