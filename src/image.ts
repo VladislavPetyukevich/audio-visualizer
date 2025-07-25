@@ -203,7 +203,7 @@ export const createVisualizerFrameGenerator = () => {
        imageDstBuffer,
        spectrum,
        size,
-       position: { x: position.x + 4, y: position.y + 4 },
+       position: { x: position.x + 2, y: position.y + 2 },
        rotation,
        margin,
        color: rgbSpectrumColor,
