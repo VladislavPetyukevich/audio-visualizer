@@ -11,7 +11,7 @@ import * as video from '../video';
 const EXIT_CODE = 0;
 const sandbox = createSandbox();
 
-describe.skip('index', function () {
+describe('index', function () {
 
   this.beforeAll(function () {
     sandbox.stub(fs, 'readFileSync').returns(Buffer.from([1, 1]));

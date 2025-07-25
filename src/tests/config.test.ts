@@ -21,7 +21,7 @@ import {
   checkIsPercentValue
 } from '../config';
 
-describe.skip('config', function() {
+describe('config', function() {
   it('getAudioFilePath', function() {
     const result = getAudioFilePath({
       audio: { path: 'test/path' }
@@ -79,9 +79,9 @@ describe.skip('config', function() {
     );
 
     const result2 = getSpectrumWidthAbsolute({
-      outVideo: { spectrum: { width: 420 }}
+      outVideo: { spectrum: { width: 600 }}
     } as Config, backgroundImageWidth);
-    expect(result2).equal(420);
+    expect(result2).equal(600);
 
     const result3 = getSpectrumWidthAbsolute({
       outVideo: { spectrum: { width: '69%' }}
@@ -121,7 +121,7 @@ describe.skip('config', function() {
     const result1 = getSpectrumHeightAbsolute({
       outVideo: {}
     } as Config, backgroundImageHeight);
-    expect(result1).equal(80);
+    expect(result1).equal(160);
 
     const result2 = getSpectrumHeightAbsolute({
       outVideo: { spectrum: { height: 420 }}
@@ -210,7 +210,7 @@ describe.skip('config', function() {
 
   it('getSpectrumYAbsolute', function() {
     const spectrumHeight = 125;
-    const backgroundImageHeight = 768;
+    const backgroundImageHeight = 721;
     const result1 = getSpectrumYAbsolute(
       {
         outVideo: {},
@@ -219,7 +219,7 @@ describe.skip('config', function() {
       backgroundImageHeight
     );
     expect(result1).equal(
-      0
+      298
     );
 
     const result2 = getSpectrumYAbsolute(
