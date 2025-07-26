@@ -1,3 +1,7 @@
 node_modules
-example/media/out.mp4
+example/media
+!example/media/audio.wav
+!example/media/horses.png
+!example/media/out-sample.png
 dist
+.DS_Store

@@ -1,11 +1,14 @@
 {
   "image": {
-    "path": "example/media/background.png"
+    "path": "example/media/horses.png"
   },
   "audio": {
     "path": "example/media/audio.wav"
   },
   "outVideo": {
-    "path": "example/media/out.mp4"
+    "path": "example/media/out.mp4",
+    "spectrum": {
+      "effect": "volume"
+    }
   }
 }

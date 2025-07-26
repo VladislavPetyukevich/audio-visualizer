@@ -16,10 +16,9 @@ describe('fft', function () {
   });
 
   it('getSpectrum', function () {
-    var signal = [1, 0, 0, 0, 1, 0, 0, 0];
-    const fft = [8.317766166719343, 0, 11.090354888959125, 0];
+    const signal = Array(Math.pow(2, 12)).fill(1);
 
-    const result = getSpectrum(signal);
-    expect(result).deep.equal(fft);
+    const result = getSpectrum(signal, 44100);
+    expect(result).to.have.length(24);
   });
 });

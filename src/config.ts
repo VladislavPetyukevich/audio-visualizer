@@ -1,19 +1,21 @@
 import path from 'path';
 import { Config, SpectrumSizeValue, PositionAliasName, RotationAliasName } from './index';
+import { FREQUENCY_BANDS } from './dsp';
 
 export const defaults = {
-  fps: 60,
-  spectrumWidth: '40%',
-  spectrumHeight: '10%',
+  fps: 30,
+  spectrumWidth: '33%',
+  spectrumHeight: 160,
   spectrumX: 'center',
-  spectrumY: 'top',
-  spectrumRotation: 'down',
-  spectrumBusesCount: 64,
-  spectrumBusMargin: 4,
-  spectrumOpacity: '100%',
+  spectrumY: 'middle',
+  spectrumRotation: 'mirror',
+  spectrumBusMargin: 12,
+  spectrumOpacity: '80%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
+
+export type SpectrumEffect = 'volume' | 'smooth';
 
 interface PositionAlias {
   name: PositionAliasName;
@@ -29,7 +31,7 @@ const postitionAliases: PositionAlias[] = [
   { name: 'bottom', value: 1 },
 ];
 
-export const rotationAliasValues = ['up', 'down'] as const;
+export const rotationAliasValues = ['up', 'down', 'mirror'] as const;
 
 export const checkIsPercentValue = (value: string) =>
   RegExp(/\d+%/).test(value)
@@ -46,13 +48,14 @@ export const getOutVideoPath = (config: Config) =>
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
 
-export const getSpectrumBusesCount = () => defaults.spectrumBusesCount;
-
 export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 
 const getSpectrumWidth = (config: Config) =>
   (config.outVideo.spectrum && config.outVideo.spectrum.width) ||
   defaults.spectrumWidth;
+
+export const getSpectrumEffect = (config: Config) =>
+  config.outVideo.spectrum?.effect;
 
 const getSpectrumSizeAbsolute = (
   spectrumSize: SpectrumSizeValue,
@@ -81,7 +84,7 @@ export const getSpectrumWidthAbsolute = (
   const spectrumWidth = getSpectrumWidth(config);
   const spectrumWidthAbsolute = getSpectrumSizeAbsolute(spectrumWidth, backgroundImageWidth, 'width');
   const spectrumWidthWithoutMargin =
-    Math.trunc(spectrumWidthAbsolute / defaults.spectrumBusesCount) - defaults.spectrumBusMargin / 2;
+    Math.trunc(spectrumWidthAbsolute / FREQUENCY_BANDS.length) - defaults.spectrumBusMargin / 2;
   if (spectrumWidthWithoutMargin <= 0) {
     throw new Error(`Spectrum width '${spectrumWidth}' is too small.`);
   }

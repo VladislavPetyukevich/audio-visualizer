@@ -79,9 +79,9 @@ describe('config', function() {
     );
 
     const result2 = getSpectrumWidthAbsolute({
-      outVideo: { spectrum: { width: 420 }}
+      outVideo: { spectrum: { width: 600 }}
     } as Config, backgroundImageWidth);
-    expect(result2).equal(420);
+    expect(result2).equal(600);
 
     const result3 = getSpectrumWidthAbsolute({
       outVideo: { spectrum: { width: '69%' }}
@@ -117,13 +117,11 @@ describe('config', function() {
   });
 
   it('getSpectrumHeightAbsolute', function() {
-    const backgroundImageHeight = 768;
+    const backgroundImageHeight = 720;
     const result1 = getSpectrumHeightAbsolute({
       outVideo: {}
     } as Config, backgroundImageHeight);
-    expect(result1).equal(
-      backgroundImageHeight * (parseInt(defaults.spectrumHeight) / 100)
-    );
+    expect(result1).equal(160);
 
     const result2 = getSpectrumHeightAbsolute({
       outVideo: { spectrum: { height: 420 }}
@@ -212,7 +210,7 @@ describe('config', function() {
 
   it('getSpectrumYAbsolute', function() {
     const spectrumHeight = 125;
-    const backgroundImageHeight = 768;
+    const backgroundImageHeight = 721;
     const result1 = getSpectrumYAbsolute(
       {
         outVideo: {},
@@ -221,7 +219,7 @@ describe('config', function() {
       backgroundImageHeight
     );
     expect(result1).equal(
-      0
+      298
     );
 
     const result2 = getSpectrumYAbsolute(

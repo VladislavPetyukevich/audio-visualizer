@@ -2,6 +2,7 @@ import { RotationAliasName } from './index';
 import { decode, BmpDecoder } from 'bmp-js';
 import { EncodedBmp } from './bpmEncoder';
 import Jimp from 'jimp';
+import { SpectrumEffect } from './config';
 
 export interface Color {
   red: number;
@@ -111,6 +112,27 @@ interface DrawSpectrumProps {
   opacity: number;
 }
 
+const getRectY = (rotation: RotationAliasName, top: number, height: number, rectHeight: number) => {
+  switch (rotation) {
+    case 'up':
+      return top + height - rectHeight;
+    case 'mirror':
+      return top + Math.trunc((height - rectHeight) / 2);
+    default:
+      return top;
+  }
+};
+
+const minRectHeight = 2;
+
+const getRectHeight = (height: number, spectrumValue: number) => {
+  const rectHeight = Math.trunc(height * spectrumValue);
+  if (rectHeight < minRectHeight) {
+    return minRectHeight;
+  }
+  return rectHeight;
+};
+
 const drawSpectrum = ({
   imageDstBuffer,
   spectrum,
@@ -133,8 +155,8 @@ const drawSpectrum = ({
     }
 
     const rectX = left + busWidth * spectrumX;
-    const rectHeight = Math.trunc(height * spectrumValue);
-    const rectY = (rotation === 'up') ? top + height - rectHeight : top;
+    const rectHeight = getRectHeight(height, spectrumValue);
+    const rectY = getRectY(rotation, top, height, rectHeight);
     drawRect({
       imageDstBuffer,
       position: { x: rectX + margin, y: rectY },
@@ -154,33 +176,67 @@ interface CreateVisualizerFrameProps {
   margin: number;
   color: Color | string;
   opacity: number;
+  spectrumEffect?: SpectrumEffect;
 }
 
-export const createVisualizerFrame = ({
-  backgroundImageBuffer,
-  spectrum,
-  size,
-  position,
-  rotation,
-  margin,
-  color,
-  opacity,
-}: CreateVisualizerFrameProps) => {
-  const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
-  imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+export const createVisualizerFrameGenerator = () => {
+  let prevSpectrum: number[] | null = null;
 
-  const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
-  drawSpectrum({
-    imageDstBuffer,
+  return ({
+    backgroundImageBuffer,
     spectrum,
     size,
     position,
     rotation,
     margin,
-    color: rgbSpectrumColor,
+    color,
     opacity,
-  });
-  return imageDstBuffer;
+    spectrumEffect,
+  }: CreateVisualizerFrameProps) => {
+    const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
+    imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+  
+    
+    const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+    if (spectrumEffect === 'volume') {
+      drawSpectrum({
+       imageDstBuffer,
+       spectrum,
+       size,
+       position: { x: position.x + 2, y: position.y + 2 },
+       rotation,
+       margin,
+       color: rgbSpectrumColor,
+       opacity: opacity * 0.5,
+      }); 
+    }
+    if (spectrumEffect === 'smooth' && prevSpectrum) {
+      drawSpectrum({
+       imageDstBuffer,
+       spectrum: prevSpectrum,
+       size,
+       position,
+       rotation,
+       margin,
+       color: rgbSpectrumColor,
+       opacity: opacity * 0.3,
+      }); 
+    }
+    drawSpectrum({
+      imageDstBuffer,
+      spectrum,
+      size,
+      position,
+      rotation,
+      margin,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+  
+    prevSpectrum = spectrum;
+  
+    return imageDstBuffer;
+  };
 };
 
 export const convertToBmp = async (filePath: string) =>

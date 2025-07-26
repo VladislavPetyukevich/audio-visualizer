@@ -3,7 +3,6 @@ import {
   getBackgroundImagePath,
   getOutVideoPath,
   getFPS,
-  getSpectrumBusesCount,
   getSpectrumBusMargin,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
@@ -15,10 +14,12 @@ import {
   getFfmpeg_preset,
   getFrame_processing_delay,
   rotationAliasValues,
-  getSpectrumRotation
+  getSpectrumRotation,
+  getSpectrumEffect,
+  SpectrumEffect,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, createVisualizerFrame, getImageColor, invertColor, Color, convertToBmp } from './image';
+import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 import { createBpmEncoder } from './bpmEncoder';
 
@@ -28,6 +29,7 @@ export const PCM_FORMAT = {
   parseFunction: bufferToUInt8
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
+const PROCESSING_BUFFER_SIZE = Math.pow(2, 12);
 
 export interface Config {
   audio: {
@@ -45,6 +47,7 @@ export interface Config {
       x?: number | PositionAliasName;
       y?: number | PositionAliasName;
       rotation?: RotationAliasName;
+      effect?: SpectrumEffect;
       color?: Color | string;
       opacity?: string;
     }
@@ -86,7 +89,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       throw new Error('ffmpeg didn\'t show audio sample rate');
     }
 
-    const spectrumBusesCount = getSpectrumBusesCount();
     const spectrumBusMargin = getSpectrumBusMargin();
     const FPS = getFPS(config);
     const spectrumWidth =
@@ -102,6 +104,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const spectrumColor =
       getSpectrumColor(config) ||
       invertColor(getImageColor(backgroundImage));
+    const spectrumEffect = getSpectrumEffect(config);
     const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
@@ -110,6 +113,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
     const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
+    const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
 
     const ffmpegVideoWriter = spawnFfmpegVideoWriter({
       audioFilename: audioFilePath,
@@ -123,11 +127,16 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
-    const processSpectrum = createSpectrumsProcessor(spectrumBusesCount);
+    const skipFramesCount = FPS < 45 ? 1 : 2;
+    const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
+    const createVisualizerFrame = createVisualizerFrameGenerator();
     for (let i = 0; i < framesCount; i++) {
-      const audioDataParser = () =>
-        PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
-      const spectrum = processSpectrum(i, audioDataParser);
+      const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
+      processingBuffer.copyWithin(0, currentFrameData.length);
+      processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
+
+      const audioDataParser = () => Array.from(processingBuffer);
+      const spectrum = processSpectrum(audioDataParser);
       const frameImage = createVisualizerFrame({
         backgroundImageBuffer,
         spectrum,
@@ -137,6 +146,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         margin: spectrumBusMargin,
         color: spectrumColor,
         opacity: spectrumOpacity,
+        spectrumEffect,
       });
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {
