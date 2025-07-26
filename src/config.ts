@@ -5,7 +5,7 @@ import { FREQUENCY_BANDS } from './dsp';
 export const defaults = {
   fps: 30,
   spectrumWidth: '33%',
-  spectrumHeight: 80 * 2,
+  spectrumHeight: 160,
   spectrumX: 'center',
   spectrumY: 'middle',
   spectrumRotation: 'mirror',
