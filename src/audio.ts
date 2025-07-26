@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import ffmpegPath from 'ffmpeg-static';
-import { getSpectrum } from './dsp';
+import { FREQUENCY_BANDS, getSpectrum } from './dsp';
 
 export const skipEvery = <T>(skipIndex: number) => (element: T, index: number) =>
   index % skipIndex === 0;
@@ -57,7 +57,10 @@ export const createSpectrumsProcessor = (sampleRate: number, skipFramesCount: nu
 
       const spectrum = getSpectrum(audioDataNomrmalized, sampleRate);
       const peaks = getPeaks(spectrum, prevPeaks);
-      const correctedSpectrum = correctPeaks(spectrum, peaks);
+      const correctedSpectrum =
+        prevPeaks.length === 0 ?
+          Array(FREQUENCY_BANDS.length).fill(0) :
+          correctPeaks(spectrum, peaks);
      
       prevPeaks = peaks;
       previousSpectrum = [...targetSpectrum];
