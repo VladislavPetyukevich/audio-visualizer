@@ -26,7 +26,7 @@ interface MixColorProps {
   backgroundColor: Color;
 }
 
-export const mixValues =(value1: number, value1Opacity: number, value2: number) =>
+export const mixValues = (value1: number, value1Opacity: number, value2: number) =>
   Math.round(value2 * (1 - value1Opacity) + value1 * value1Opacity);
 
 export const mixColors = ({
@@ -101,6 +101,199 @@ export const drawRect = ({
   }
 };
 
+interface FillRectProps {
+  imageDstBuffer: EncodedBmp;
+  points: [Position, Position, Position, Position];
+  color: Color;
+  opacity: number;
+}
+
+interface FillPolygonProps {
+  imageDstBuffer: EncodedBmp;
+  points: [Position, Position, Position];
+  color: Color;
+  opacity: number;
+}
+
+interface Edge {
+  yMin: number;
+  yMax: number;
+  x: number;
+  dx: number;
+}
+
+const buildEdgeTable = (points: [Position, Position, Position, Position]): Edge[] => {
+  const edges: Edge[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+
+    if (p1.y === p2.y) continue; // Skip horizontal edges
+
+    const yMin = Math.min(p1.y, p2.y);
+    const yMax = Math.max(p1.y, p2.y);
+    const x = p1.y < p2.y ? p1.x : p2.x;
+    const dx = (p2.x - p1.x) / (p2.y - p1.y);
+
+    edges.push({ yMin, yMax, x, dx });
+  }
+
+  return edges.sort((a, b) => a.yMin - b.yMin);
+};
+
+const buildPolygonEdgeTable = (points: [Position, Position, Position]): Edge[] => {
+  const edges: Edge[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+
+    if (p1.y === p2.y) continue; // Skip horizontal edges
+
+    const yMin = Math.min(p1.y, p2.y);
+    const yMax = Math.max(p1.y, p2.y);
+    const x = p1.y < p2.y ? p1.x : p2.x;
+    const dx = (p2.x - p1.x) / (p2.y - p1.y);
+
+    edges.push({ yMin, yMax, x, dx });
+  }
+
+  return edges.sort((a, b) => a.yMin - b.yMin);
+};
+
+export const fillRect = ({
+  imageDstBuffer,
+  points,
+  color,
+  opacity,
+}: FillRectProps) => {
+  const edgeTable = buildEdgeTable(points);
+  if (edgeTable.length === 0) return;
+
+  const yMin = Math.min(...points.map(p => p.y));
+  const yMax = Math.max(...points.map(p => p.y));
+
+  const activeEdges: Edge[] = [];
+
+  for (let y = Math.floor(yMin); y <= Math.ceil(yMax); y++) {
+    // Add edges that start at this scanline
+    for (const edge of edgeTable) {
+      if (Math.floor(edge.yMin) === y) {
+        activeEdges.push({ ...edge });
+      }
+    }
+
+    // Remove edges that end at this scanline
+    for (let i = activeEdges.length - 1; i >= 0; i--) {
+      if (Math.ceil(activeEdges[i].yMax) <= y) {
+        activeEdges.splice(i, 1);
+      }
+    }
+
+    // Sort active edges by x coordinate
+    activeEdges.sort((a, b) => a.x - b.x);
+
+    // Fill between pairs of intersections
+    for (let i = 0; i < activeEdges.length; i += 2) {
+      if (i + 1 < activeEdges.length) {
+        const xStart = Math.floor(activeEdges[i].x);
+        const xEnd = Math.ceil(activeEdges[i + 1].x);
+
+        for (let x = xStart; x < xEnd; x++) {
+          const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
+          const pixelColor = getRectPixelColor({
+            imageDstBuffer,
+            pixelIndex,
+            color,
+            opacity,
+          });
+          imageDstBuffer.data[pixelIndex] = pixelColor.blue;
+          imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
+          imageDstBuffer.data[pixelIndex + 2] = pixelColor.red;
+        }
+      }
+    }
+
+    // Update x coordinates for next scanline
+    for (const edge of activeEdges) {
+      edge.x += edge.dx;
+    }
+  }
+};
+
+/**
+ * Fills a triangle using the Scan Line Polygon Fill Algorithm
+ * @param imageDstBuffer - The destination image buffer
+ * @param points - Array of 3 triangle vertices
+ * @param color - Fill color
+ * @param opacity - Opacity value (0-1)
+ */
+export const fillPolygon = ({
+  imageDstBuffer,
+  points,
+  color,
+  opacity,
+}: FillPolygonProps) => {
+  // Build edge table from triangle vertices
+  const edgeTable = buildPolygonEdgeTable(points);
+  if (edgeTable.length === 0) return;
+
+  // Find the bounding box of the polygon
+  const yMin = Math.min(...points.map(p => p.y));
+  const yMax = Math.max(...points.map(p => p.y));
+
+  // Active Edge Table (AET) for scan line algorithm
+  const activeEdges: Edge[] = [];
+
+  // Scan line algorithm: process each horizontal line
+  for (let y = Math.floor(yMin); y <= Math.ceil(yMax); y++) {
+    // Step 1: Add edges that start at this scanline to AET
+    for (const edge of edgeTable) {
+      if (Math.floor(edge.yMin) === y) {
+        activeEdges.push({ ...edge });
+      }
+    }
+
+    // Step 2: Remove edges that end at this scanline from AET
+    for (let i = activeEdges.length - 1; i >= 0; i--) {
+      if (Math.ceil(activeEdges[i].yMax) <= y) {
+        activeEdges.splice(i, 1);
+      }
+    }
+
+    // Step 3: Sort active edges by x coordinate
+    activeEdges.sort((a, b) => a.x - b.x);
+
+    // Step 4: Fill pixels between pairs of intersections (parity fill rule)
+    for (let i = 0; i < activeEdges.length; i += 2) {
+      if (i + 1 < activeEdges.length) {
+        const xStart = Math.floor(activeEdges[i].x);
+        const xEnd = Math.ceil(activeEdges[i + 1].x);
+
+        // Fill the span between the two intersection points
+        for (let x = xStart; x < xEnd; x++) {
+          const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
+          const pixelColor = getRectPixelColor({
+            imageDstBuffer,
+            pixelIndex,
+            color,
+            opacity,
+          });
+          imageDstBuffer.data[pixelIndex] = pixelColor.blue;
+          imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
+          imageDstBuffer.data[pixelIndex + 2] = pixelColor.red;
+        }
+      }
+    }
+
+    // Step 5: Update x coordinates for next scanline (x' = x + dx)
+    for (const edge of activeEdges) {
+      edge.x += edge.dx;
+    }
+  }
+};
+
 interface DrawSpectrumProps {
   imageDstBuffer: EncodedBmp;
   spectrum: number[];
@@ -167,6 +360,85 @@ const drawSpectrum = ({
   }
 };
 
+const calcCirclePoint = (angleRadians: number, radius: number): Position => {
+  const circleX = radius * Math.cos(angleRadians);
+  const circleY = radius * Math.sin(angleRadians);
+  return { x: circleX, y: circleY };
+};
+
+const degreesToRadians = (degrees: number) =>
+  degrees * (Math.PI / 180);
+
+interface DrawPolarSpectrumProps {
+  imageDstBuffer: EncodedBmp;
+  spectrum: number[];
+  centerX: number;
+  centerY: number;
+  innerRadius: number;
+  maxBarLength: number;
+  barWidth: number;
+  color: Color;
+  opacity: number;
+  startAngle?: number;
+  endAngle?: number;
+}
+
+const drawPolarSpectrum = ({
+  imageDstBuffer,
+  spectrum,
+  centerX,
+  centerY,
+  innerRadius,
+  maxBarLength,
+  barWidth,
+  color,
+  opacity,
+  // startAngle = 0,
+  // endAngle = 2 * Math.PI,
+}: DrawPolarSpectrumProps) => {
+  const angleStep = Math.floor(360 / spectrum.length);
+  const busWidth = 10;
+  const margin = Math.floor(busWidth / 2);
+  const busHeight = Math.trunc(innerRadius * 0.6);
+  const spectrumAverage = spectrum.reduce((a, b) => a + b, 0) / spectrum.length;
+  for (let i = 0; i < spectrum.length; i++) {
+    const angle = i * angleStep;
+    const angleRadiansStart = degreesToRadians(angle + margin / 2);
+    const angleRadiansEnd = degreesToRadians(angle + busWidth - margin / 2);
+    const currentSpectrumValue = spectrum[i] || 0;
+    const radiusBottom = (innerRadius - busHeight) * (spectrumAverage * 0.3);
+    const radiusTop = radiusBottom + busHeight * (currentSpectrumValue + spectrumAverage * 0.3);
+
+    const point1 = calcCirclePoint(angleRadiansStart, radiusBottom);
+    const point2 = calcCirclePoint(angleRadiansStart, radiusTop);
+
+    const point3 = calcCirclePoint(angleRadiansEnd, radiusBottom);
+    const point4 = calcCirclePoint(angleRadiansEnd, radiusTop);
+
+    fillPolygon({
+      imageDstBuffer,
+      points: [
+        { x: centerX + Math.round(point1.x), y: centerY + Math.round(point1.y) },
+        { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
+        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
+      ],
+      color,
+      opacity,
+    });
+
+    fillPolygon({
+      imageDstBuffer,
+      points: [
+        { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
+        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
+        { x: centerX + Math.round(point4.x), y: centerY + Math.round(point4.y) },
+      ],
+      color,
+      opacity,
+    });
+  }
+};
+
 interface CreateVisualizerFrameProps {
   backgroundImageBuffer: EncodedBmp;
   spectrum: number[];
@@ -176,6 +448,21 @@ interface CreateVisualizerFrameProps {
   margin: number;
   color: Color | string;
   opacity: number;
+  spectrumEffect?: SpectrumEffect;
+}
+
+interface CreatePolarVisualizerFrameProps {
+  backgroundImageBuffer: EncodedBmp;
+  spectrum: number[];
+  centerX: number;
+  centerY: number;
+  innerRadius: number;
+  maxBarLength: number;
+  barWidth: number;
+  color: Color | string;
+  opacity: number;
+  startAngle?: number;
+  endAngle?: number;
   spectrumEffect?: SpectrumEffect;
 }
 
@@ -195,32 +482,32 @@ export const createVisualizerFrameGenerator = () => {
   }: CreateVisualizerFrameProps) => {
     const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
     imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
-  
-    
+
+
     const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
     if (spectrumEffect === 'volume') {
       drawSpectrum({
-       imageDstBuffer,
-       spectrum,
-       size,
-       position: { x: position.x + 2, y: position.y + 2 },
-       rotation,
-       margin,
-       color: rgbSpectrumColor,
-       opacity: opacity * 0.5,
-      }); 
+        imageDstBuffer,
+        spectrum,
+        size,
+        position: { x: position.x + 2, y: position.y + 2 },
+        rotation,
+        margin,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.5,
+      });
     }
     if (spectrumEffect === 'smooth' && prevSpectrum) {
       drawSpectrum({
-       imageDstBuffer,
-       spectrum: prevSpectrum,
-       size,
-       position,
-       rotation,
-       margin,
-       color: rgbSpectrumColor,
-       opacity: opacity * 0.3,
-      }); 
+        imageDstBuffer,
+        spectrum: prevSpectrum,
+        size,
+        position,
+        rotation,
+        margin,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.3,
+      });
     }
     drawSpectrum({
       imageDstBuffer,
@@ -232,9 +519,86 @@ export const createVisualizerFrameGenerator = () => {
       color: rgbSpectrumColor,
       opacity,
     });
-  
+
     prevSpectrum = spectrum;
-  
+
+    return imageDstBuffer;
+  };
+};
+
+export const createPolarVisualizerFrameGenerator = () => {
+  let prevSpectrum: number[] | null = null;
+
+  return ({
+    backgroundImageBuffer,
+    spectrum,
+    centerX,
+    centerY,
+    innerRadius,
+    maxBarLength,
+    barWidth,
+    color,
+    opacity,
+    startAngle = 0,
+    endAngle = 2 * Math.PI,
+    spectrumEffect,
+  }: CreatePolarVisualizerFrameProps) => {
+    const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
+    imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+
+    const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+
+    // Draw shadow/volume effect
+    if (spectrumEffect === 'volume') {
+      drawPolarSpectrum({
+        imageDstBuffer,
+        spectrum,
+        centerX: centerX + 2,
+        centerY: centerY + 2,
+        innerRadius,
+        maxBarLength,
+        barWidth,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.5,
+        startAngle,
+        endAngle,
+      });
+    }
+
+    // Draw smooth/trail effect with previous frame
+    if (spectrumEffect === 'smooth' && prevSpectrum) {
+      drawPolarSpectrum({
+        imageDstBuffer,
+        spectrum: prevSpectrum,
+        centerX,
+        centerY,
+        innerRadius,
+        maxBarLength,
+        barWidth,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.3,
+        startAngle,
+        endAngle,
+      });
+    }
+
+    // Draw main spectrum
+    drawPolarSpectrum({
+      imageDstBuffer,
+      spectrum,
+      centerX,
+      centerY,
+      innerRadius,
+      maxBarLength,
+      barWidth,
+      color: rgbSpectrumColor,
+      opacity,
+      startAngle,
+      endAngle,
+    });
+
+    prevSpectrum = spectrum;
+
     return imageDstBuffer;
   };
 };

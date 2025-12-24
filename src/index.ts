@@ -19,7 +19,7 @@ import {
   SpectrumEffect,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator } from './image';
+import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator, createPolarVisualizerFrameGenerator } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
 import { createBpmEncoder } from './bpmEncoder';
 
@@ -129,7 +129,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
-    const createVisualizerFrame = createVisualizerFrameGenerator();
+    const createVisualizerFrame = createPolarVisualizerFrameGenerator();
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);
@@ -140,10 +140,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       const frameImage = createVisualizerFrame({
         backgroundImageBuffer,
         spectrum,
-        size: { width: spectrumWidth, height: spectrumHeight },
-        position: { x: spectrumX, y: spectrumY },
-        rotation: spectrumRotation,
-        margin: spectrumBusMargin,
+        centerX: spectrumX,
+        centerY: spectrumY,
+        innerRadius: 200,
+        maxBarLength: 500,
+        barWidth: 15,
         color: spectrumColor,
         opacity: spectrumOpacity,
         spectrumEffect,
