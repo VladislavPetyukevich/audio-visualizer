@@ -17,6 +17,14 @@ import {
   getSpectrumRotation,
   getSpectrumEffect,
   SpectrumEffect,
+  getPolarXAbsolute,
+  getPolarYAbsolute,
+  getPolarInnerRadius,
+  getPolarMaxBarLength,
+  getPolarBarWidth,
+  getPolarEffect,
+  getPolarColor,
+  getPolarOpacityParsed,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator, createPolarVisualizerFrameGenerator } from './image';
@@ -50,6 +58,16 @@ export interface Config {
       effect?: SpectrumEffect;
       color?: Color | string;
       opacity?: string;
+    };
+    polar?: {
+      x?: number | PositionAliasName;
+      y?: number | PositionAliasName;
+      innerRadius?: number;
+      maxBarLength?: number;
+      barWidth?: number;
+      effect?: SpectrumEffect;
+      color?: Color | string;
+      opacity?: string;
     }
   };
   tweaks?: {
@@ -76,6 +94,11 @@ const sleep = (timeout: number) =>
 
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
+    // Validate that only one visualizer type is specified
+    if (config.outVideo.spectrum && config.outVideo.polar) {
+      throw new Error('Cannot use both "spectrum" and "polar" options. Please specify only one visualizer type.');
+    }
+
     const audioFilePath = getAudioFilePath(config);
     const backgroundImagePath = getBackgroundImagePath(config);
     const outVideoPath = getOutVideoPath(config);
@@ -91,24 +114,55 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const spectrumBusMargin = getSpectrumBusMargin();
     const FPS = getFPS(config);
-    const spectrumWidth =
-      getSpectrumWidthAbsolute(config, backgroundImage.width);
-    const spectrumHeight =
-      getSpectrumHeightAbsolute(config, backgroundImage.height);
-    const spectrumX =
-      getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
-    const spectrumY =
-      getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
-    const spectrumRotation =
-      getSpectrumRotation(config);
-    const spectrumColor =
-      getSpectrumColor(config) ||
-      invertColor(getImageColor(backgroundImage));
-    const spectrumEffect = getSpectrumEffect(config);
-    const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
+
+    // Determine which visualizer to use - polar is default unless spectrum is explicitly specified
+    const usePolar = !config.outVideo.spectrum;
+
+    // Get visualizer-specific parameters
+    let visualizerParams: any;
+    if (usePolar) {
+      const polarX = getPolarXAbsolute(config, backgroundImage.width);
+      const polarY = getPolarYAbsolute(config, backgroundImage.height);
+      const polarInnerRadius = getPolarInnerRadius(config);
+      const polarMaxBarLength = getPolarMaxBarLength(config);
+      const polarBarWidth = getPolarBarWidth(config);
+      const polarColor = getPolarColor(config) || invertColor(getImageColor(backgroundImage));
+      const polarEffect = getPolarEffect(config);
+      const polarOpacity = getPolarOpacityParsed(config);
+
+      visualizerParams = {
+        centerX: polarX,
+        centerY: polarY,
+        innerRadius: polarInnerRadius,
+        maxBarLength: polarMaxBarLength,
+        barWidth: polarBarWidth,
+        color: polarColor,
+        opacity: polarOpacity,
+        spectrumEffect: polarEffect,
+      };
+    } else {
+      const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundImage.width);
+      const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundImage.height);
+      const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
+      const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
+      const spectrumRotation = getSpectrumRotation(config);
+      const spectrumColor = getSpectrumColor(config) || invertColor(getImageColor(backgroundImage));
+      const spectrumEffect = getSpectrumEffect(config);
+      const spectrumOpacity = getSpectrumOpacityParsed(config);
+
+      visualizerParams = {
+        size: { width: spectrumWidth, height: spectrumHeight },
+        position: { x: spectrumX, y: spectrumY },
+        rotation: spectrumRotation,
+        margin: spectrumBusMargin,
+        color: spectrumColor,
+        opacity: spectrumOpacity,
+        spectrumEffect,
+      };
+    }
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
@@ -129,7 +183,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
-    const createVisualizerFrame = createPolarVisualizerFrameGenerator();
+    const createVisualizerFrame = usePolar
+      ? createPolarVisualizerFrameGenerator()
+      : createVisualizerFrameGenerator();
+
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);
@@ -140,14 +197,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       const frameImage = createVisualizerFrame({
         backgroundImageBuffer,
         spectrum,
-        centerX: spectrumX,
-        centerY: spectrumY,
-        innerRadius: 200,
-        maxBarLength: 500,
-        barWidth: 15,
-        color: spectrumColor,
-        opacity: spectrumOpacity,
-        spectrumEffect,
+        ...visualizerParams,
       });
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {

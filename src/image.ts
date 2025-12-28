@@ -366,8 +366,8 @@ const calcCirclePoint = (angleRadians: number, radius: number): Position => {
   return { x: circleX, y: circleY };
 };
 
-const degreesToRadians = (degrees: number) =>
-  degrees * (Math.PI / 180);
+const lerp = (start: number, end: number, t: number) =>
+  start + (end - start) * t;
 
 interface DrawPolarSpectrumProps {
   imageDstBuffer: EncodedBmp;
@@ -379,8 +379,6 @@ interface DrawPolarSpectrumProps {
   barWidth: number;
   color: Color;
   opacity: number;
-  startAngle?: number;
-  endAngle?: number;
 }
 
 const drawPolarSpectrum = ({
@@ -393,27 +391,27 @@ const drawPolarSpectrum = ({
   barWidth,
   color,
   opacity,
-  // startAngle = 0,
-  // endAngle = 2 * Math.PI,
 }: DrawPolarSpectrumProps) => {
-  const angleStep = Math.floor(360 / spectrum.length);
-  const busWidth = 10;
-  const margin = Math.floor(busWidth / 2);
-  const busHeight = Math.trunc(innerRadius * 0.6);
+  const angleStep = (2 * Math.PI) / spectrum.length;
+  const innerLength = innerRadius * 2 * Math.PI;
+  const radiansPerPixel = 2 * Math.PI / innerLength;
+  const barWidthInRadians = radiansPerPixel * barWidth;
   const spectrumAverage = spectrum.reduce((a, b) => a + b, 0) / spectrum.length;
+  const scaleFactor = lerp(0.75, 1, spectrumAverage);
+  const scaledMaxOuterRadius = (innerRadius + maxBarLength) * scaleFactor;
+  const scaledInnerRadius = innerRadius * scaleFactor;
   for (let i = 0; i < spectrum.length; i++) {
-    const angle = i * angleStep;
-    const angleRadiansStart = degreesToRadians(angle + margin / 2);
-    const angleRadiansEnd = degreesToRadians(angle + busWidth - margin / 2);
     const currentSpectrumValue = spectrum[i] || 0;
-    const radiusBottom = (innerRadius - busHeight) * (spectrumAverage * 0.3);
-    const radiusTop = radiusBottom + busHeight * (currentSpectrumValue + spectrumAverage * 0.3);
+    const busRadius = lerp(scaledInnerRadius, scaledMaxOuterRadius, currentSpectrumValue);
+    const angle = i * angleStep;
+    const angleRadiansStart = angle;
+    const angleRadiansEnd = angle + barWidthInRadians;
 
-    const point1 = calcCirclePoint(angleRadiansStart, radiusBottom);
-    const point2 = calcCirclePoint(angleRadiansStart, radiusTop);
+    const point1 = calcCirclePoint(angleRadiansStart, scaledInnerRadius);
+    const point2 = calcCirclePoint(angleRadiansStart, busRadius);
 
-    const point3 = calcCirclePoint(angleRadiansEnd, radiusBottom);
-    const point4 = calcCirclePoint(angleRadiansEnd, radiusTop);
+    const point3 = calcCirclePoint(angleRadiansEnd, scaledInnerRadius);
+    const point4 = calcCirclePoint(angleRadiansEnd, busRadius);
 
     fillPolygon({
       imageDstBuffer,
@@ -461,8 +459,6 @@ interface CreatePolarVisualizerFrameProps {
   barWidth: number;
   color: Color | string;
   opacity: number;
-  startAngle?: number;
-  endAngle?: number;
   spectrumEffect?: SpectrumEffect;
 }
 
@@ -539,8 +535,6 @@ export const createPolarVisualizerFrameGenerator = () => {
     barWidth,
     color,
     opacity,
-    startAngle = 0,
-    endAngle = 2 * Math.PI,
     spectrumEffect,
   }: CreatePolarVisualizerFrameProps) => {
     const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
@@ -560,8 +554,6 @@ export const createPolarVisualizerFrameGenerator = () => {
         barWidth,
         color: rgbSpectrumColor,
         opacity: opacity * 0.5,
-        startAngle,
-        endAngle,
       });
     }
 
@@ -577,8 +569,6 @@ export const createPolarVisualizerFrameGenerator = () => {
         barWidth,
         color: rgbSpectrumColor,
         opacity: opacity * 0.3,
-        startAngle,
-        endAngle,
       });
     }
 
@@ -593,8 +583,6 @@ export const createPolarVisualizerFrameGenerator = () => {
       barWidth,
       color: rgbSpectrumColor,
       opacity,
-      startAngle,
-      endAngle,
     });
 
     prevSpectrum = spectrum;
