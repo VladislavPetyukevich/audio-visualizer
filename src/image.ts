@@ -101,14 +101,6 @@ export const drawRect = ({
   }
 };
 
-interface FillPolygonProps {
-  imageDstBuffer: EncodedBmp;
-  points: [Position, Position, Position];
-  color: Color;
-  opacity: number;
-  skipPixels?: Set<number>;
-}
-
 interface Edge {
   yMin: number;
   yMax: number;
@@ -116,7 +108,14 @@ interface Edge {
   dx: number;
 }
 
-const buildPolygonEdgeTable = (points: [Position, Position, Position]): Edge[] => {
+interface FillRectProps {
+  imageDstBuffer: EncodedBmp;
+  points: [Position, Position, Position, Position];
+  color: Color;
+  opacity: number;
+}
+
+const buildQuadEdgeTable = (points: [Position, Position, Position, Position]): Edge[] => {
   const edges: Edge[] = [];
 
   for (let i = 0; i < points.length; i++) {
@@ -137,67 +136,76 @@ const buildPolygonEdgeTable = (points: [Position, Position, Position]): Edge[] =
 };
 
 /**
- * Fills a triangle using the Scan Line Polygon Fill Algorithm
- * @param imageDstBuffer - The destination image buffer
- * @param points - Array of 3 triangle vertices
- * @param color - Fill color
- * @param opacity - Opacity value (0-1)
+ * Fills a quadrilateral (4-sided polygon) using scan-line algorithm
+ * Only the outer edges are anti-aliased
  */
-export const fillPolygon = ({
+export const fillRect = ({
   imageDstBuffer,
   points,
   color,
   opacity,
-  skipPixels,
-}: FillPolygonProps): Set<number> => {
-  const filledPixels = new Set<number>();
+}: FillRectProps) => {
+  // Build edge table from all 4 vertices
+  const edgeTable = buildQuadEdgeTable(points);
+  if (edgeTable.length === 0) return;
 
-  // Build edge table from triangle vertices
-  const edgeTable = buildPolygonEdgeTable(points);
-  if (edgeTable.length === 0) return filledPixels;
-
-  // Find the bounding box of the polygon
+  // Find the bounding box
   const yMin = Math.min(...points.map(p => p.y));
   const yMax = Math.max(...points.map(p => p.y));
 
-  // Active Edge Table (AET) for scan line algorithm
+  // Active Edge Table for scan line algorithm
   const activeEdges: Edge[] = [];
 
   // Scan line algorithm: process each horizontal line
   for (let y = Math.floor(yMin); y <= Math.ceil(yMax); y++) {
-    // Step 1: Add edges that start at this scanline to AET
+    // Add edges that start at this scanline to AET
     for (const edge of edgeTable) {
       if (Math.floor(edge.yMin) === y) {
         activeEdges.push({ ...edge });
       }
     }
 
-    // Step 2: Remove edges that end at this scanline from AET
+    // Remove edges that end at this scanline from AET
     for (let i = activeEdges.length - 1; i >= 0; i--) {
       if (Math.ceil(activeEdges[i].yMax) <= y) {
         activeEdges.splice(i, 1);
       }
     }
 
-    // Step 3: Sort active edges by x coordinate
+    // Sort active edges by x coordinate
     activeEdges.sort((a, b) => a.x - b.x);
 
-    // Step 4: Fill pixels between pairs of intersections (parity fill rule)
+    // Fill pixels between pairs of intersections
     for (let i = 0; i < activeEdges.length; i += 2) {
       if (i + 1 < activeEdges.length) {
-        const xStart = Math.floor(activeEdges[i].x);
-        const xEnd = Math.ceil(activeEdges[i + 1].x);
+        const xStart = activeEdges[i].x;
+        const xEnd = activeEdges[i + 1].x;
 
-        // Fill the span between the two intersection points
-        for (let x = xStart; x < xEnd; x++) {
+        // Anti-aliased rendering with sub-pixel precision
+        const xStartFloor = Math.floor(xStart);
+        const xEndCeil = Math.ceil(xEnd);
+
+        for (let x = xStartFloor; x < xEndCeil; x++) {
           const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
-          if (skipPixels?.has(pixelIndex)) continue;
-          filledPixels.add(pixelIndex);
+
+          // Calculate coverage for anti-aliasing
+          let coverage = 1.0;
+          if (x === xStartFloor) {
+            // Left edge pixel - calculate fractional coverage
+            coverage = Math.min(1.0, 1.0 - (xStart - xStartFloor));
+          } else if (x === xEndCeil - 1) {
+            // Right edge pixel - calculate fractional coverage
+            coverage = Math.min(1.0, xEnd - Math.floor(xEnd));
+          }
+
+          // Apply coverage to opacity for smooth edges
+          const effectiveOpacity = opacity * coverage;
+
           const pixelColor = getRectPixelColor({
             imageDstBuffer,
             pixelIndex,
             color,
-            opacity,
+            opacity: effectiveOpacity,
           });
           imageDstBuffer.data[pixelIndex] = pixelColor.blue;
           imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
@@ -206,50 +214,11 @@ export const fillPolygon = ({
       }
     }
 
-    // Step 5: Update x coordinates for next scanline (x' = x + dx)
+    // Update x coordinates for next scanline (x' = x + dx)
     for (const edge of activeEdges) {
       edge.x += edge.dx;
     }
   }
-
-  return filledPixels;
-};
-
-interface FillRectProps {
-  imageDstBuffer: EncodedBmp;
-  points: [Position, Position, Position, Position];
-  color: Color;
-  opacity: number;
-}
-
-export const fillRect = ({
-  imageDstBuffer,
-  points,
-  color,
-  opacity,
-}: FillRectProps) => {
-  const skipPixels = fillPolygon({
-    imageDstBuffer,
-    points: [
-      { x: points[0].x, y: points[0].y },
-      { x: points[1].x, y: points[1].y },
-      { x: points[2].x, y: points[2].y },
-    ],
-    color,
-    opacity,
-  });
-
-  fillPolygon({
-    imageDstBuffer,
-    points: [
-      { x: points[1].x, y: points[1].y },
-      { x: points[2].x, y: points[2].y },
-      { x: points[3].x, y: points[3].y },
-    ],
-    color,
-    opacity,
-    skipPixels,
-  });
 };
 
 interface DrawSpectrumProps {
@@ -376,8 +345,8 @@ const drawPolarSpectrum = ({
       points: [
         { x: centerX + Math.round(point1.x), y: centerY + Math.round(point1.y) },
         { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
-        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
         { x: centerX + Math.round(point4.x), y: centerY + Math.round(point4.y) },
+        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
       ],
       color,
       opacity,
