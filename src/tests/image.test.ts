@@ -3,7 +3,7 @@ import path from 'path';
 import {
   drawRect,
   Color,
-  createVisualizerFrameGenerator,
+  createSpectrumVisualizerFrameGenerator,
   parseImage,
   convertToBmp,
   mixValues,
@@ -76,14 +76,14 @@ describe('image', function () {
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
   });
 
-  it('createVisualizerFrame', async function () {
+  it('createSpectrumVisualizerFrameGenerator', async function () {
     const expectedImageLength = 6220854;
     const backgroundImagePath = path.resolve('example/media/horses.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
-    const createVisualizerFrame = createVisualizerFrameGenerator();
+    const createVisualizerFrame = createSpectrumVisualizerFrameGenerator();
     const frameSpectrumDown = createVisualizerFrame({
       backgroundImageBuffer,
       spectrum: [0.5, 0, 1],

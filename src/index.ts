@@ -27,9 +27,10 @@ import {
   getPolarOpacityParsed,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator, createPolarVisualizerFrameGenerator } from './image';
+import { parseImage, getImageColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
-import { createBpmEncoder } from './bpmEncoder';
+import { createBpmEncoder, EncodedBmp } from './bpmEncoder';
+import { BmpDecoder } from 'bmp-js';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -92,6 +93,60 @@ export type RotationAliasName = typeof rotationAliasValues[number];
 const sleep = (timeout: number) =>
   new Promise(resolve => setTimeout(resolve, timeout));
 
+const createVisualizerFrameGenerator = (
+  config: Config,
+  backgroundImage: BmpDecoder,
+  spectrumBusMargin: number
+): (params: CommonVisualizerFrameProps) => EncodedBmp => {
+  if (!config.outVideo.spectrum) {
+    const createPolarVisualizerFrame = createPolarVisualizerFrameGenerator();
+    const polarX = getPolarXAbsolute(config, backgroundImage.width);
+    const polarY = getPolarYAbsolute(config, backgroundImage.height);
+    const polarInnerRadius = getPolarInnerRadius(config);
+    const polarMaxBarLength = getPolarMaxBarLength(config);
+    const polarBarWidth = getPolarBarWidth(config);
+    const polarColor = getPolarColor(config) || invertColor(getImageColor(backgroundImage));
+    const polarEffect = getPolarEffect(config);
+    const polarOpacity = getPolarOpacityParsed(config);
+
+    return (params: CommonVisualizerFrameProps) => {
+      return createPolarVisualizerFrame({
+        ...params,
+        centerX: polarX,
+        centerY: polarY,
+        innerRadius: polarInnerRadius,
+        maxBarLength: polarMaxBarLength,
+        barWidth: polarBarWidth,
+        color: polarColor,
+        opacity: polarOpacity,
+        spectrumEffect: polarEffect,
+      });
+    };
+  }
+  const createPolarVisualizerFrame = createSpectrumVisualizerFrameGenerator();
+  const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundImage.width);
+  const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundImage.height);
+  const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
+  const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
+  const spectrumRotation = getSpectrumRotation(config);
+  const spectrumColor = getSpectrumColor(config) || invertColor(getImageColor(backgroundImage));
+  const spectrumEffect = getSpectrumEffect(config);
+  const spectrumOpacity = getSpectrumOpacityParsed(config);
+
+  return (params: CommonVisualizerFrameProps) => {
+    return createPolarVisualizerFrame({
+      ...params,
+      size: { width: spectrumWidth, height: spectrumHeight },
+      position: { x: spectrumX, y: spectrumY },
+      rotation: spectrumRotation,
+      margin: spectrumBusMargin,
+      color: spectrumColor,
+      opacity: spectrumOpacity,
+      spectrumEffect,
+    });
+  };
+};
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
     // Validate that only one visualizer type is specified
@@ -118,51 +173,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
 
-    // Determine which visualizer to use - polar is default unless spectrum is explicitly specified
-    const usePolar = !config.outVideo.spectrum;
-
-    // Get visualizer-specific parameters
-    let visualizerParams: any;
-    if (usePolar) {
-      const polarX = getPolarXAbsolute(config, backgroundImage.width);
-      const polarY = getPolarYAbsolute(config, backgroundImage.height);
-      const polarInnerRadius = getPolarInnerRadius(config);
-      const polarMaxBarLength = getPolarMaxBarLength(config);
-      const polarBarWidth = getPolarBarWidth(config);
-      const polarColor = getPolarColor(config) || invertColor(getImageColor(backgroundImage));
-      const polarEffect = getPolarEffect(config);
-      const polarOpacity = getPolarOpacityParsed(config);
-
-      visualizerParams = {
-        centerX: polarX,
-        centerY: polarY,
-        innerRadius: polarInnerRadius,
-        maxBarLength: polarMaxBarLength,
-        barWidth: polarBarWidth,
-        color: polarColor,
-        opacity: polarOpacity,
-        spectrumEffect: polarEffect,
-      };
-    } else {
-      const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundImage.width);
-      const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundImage.height);
-      const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
-      const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
-      const spectrumRotation = getSpectrumRotation(config);
-      const spectrumColor = getSpectrumColor(config) || invertColor(getImageColor(backgroundImage));
-      const spectrumEffect = getSpectrumEffect(config);
-      const spectrumOpacity = getSpectrumOpacityParsed(config);
-
-      visualizerParams = {
-        size: { width: spectrumWidth, height: spectrumHeight },
-        position: { x: spectrumX, y: spectrumY },
-        rotation: spectrumRotation,
-        margin: spectrumBusMargin,
-        color: spectrumColor,
-        opacity: spectrumOpacity,
-        spectrumEffect,
-      };
-    }
+    const createVisualizerFrame = createVisualizerFrameGenerator(config, backgroundImage, spectrumBusMargin);
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
@@ -183,9 +194,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
-    const createVisualizerFrame = usePolar
-      ? createPolarVisualizerFrameGenerator()
-      : createVisualizerFrameGenerator();
 
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
@@ -194,11 +202,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
       const audioDataParser = () => Array.from(processingBuffer);
       const spectrum = processSpectrum(audioDataParser);
-      const frameImage = createVisualizerFrame({
+      const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
         spectrum,
-        ...visualizerParams,
-      });
+      };
+      const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {
         await waitDrain(ffmpegVideoWriter.stdin);

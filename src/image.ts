@@ -101,18 +101,12 @@ export const drawRect = ({
   }
 };
 
-interface FillRectProps {
-  imageDstBuffer: EncodedBmp;
-  points: [Position, Position, Position, Position];
-  color: Color;
-  opacity: number;
-}
-
 interface FillPolygonProps {
   imageDstBuffer: EncodedBmp;
   points: [Position, Position, Position];
   color: Color;
   opacity: number;
+  skipPixels?: Set<number>;
 }
 
 interface Edge {
@@ -121,26 +115,6 @@ interface Edge {
   x: number;
   dx: number;
 }
-
-const buildEdgeTable = (points: [Position, Position, Position, Position]): Edge[] => {
-  const edges: Edge[] = [];
-
-  for (let i = 0; i < points.length; i++) {
-    const p1 = points[i];
-    const p2 = points[(i + 1) % points.length];
-
-    if (p1.y === p2.y) continue; // Skip horizontal edges
-
-    const yMin = Math.min(p1.y, p2.y);
-    const yMax = Math.max(p1.y, p2.y);
-    const x = p1.y < p2.y ? p1.x : p2.x;
-    const dx = (p2.x - p1.x) / (p2.y - p1.y);
-
-    edges.push({ yMin, yMax, x, dx });
-  }
-
-  return edges.sort((a, b) => a.yMin - b.yMin);
-};
 
 const buildPolygonEdgeTable = (points: [Position, Position, Position]): Edge[] => {
   const edges: Edge[] = [];
@@ -162,66 +136,6 @@ const buildPolygonEdgeTable = (points: [Position, Position, Position]): Edge[] =
   return edges.sort((a, b) => a.yMin - b.yMin);
 };
 
-export const fillRect = ({
-  imageDstBuffer,
-  points,
-  color,
-  opacity,
-}: FillRectProps) => {
-  const edgeTable = buildEdgeTable(points);
-  if (edgeTable.length === 0) return;
-
-  const yMin = Math.min(...points.map(p => p.y));
-  const yMax = Math.max(...points.map(p => p.y));
-
-  const activeEdges: Edge[] = [];
-
-  for (let y = Math.floor(yMin); y <= Math.ceil(yMax); y++) {
-    // Add edges that start at this scanline
-    for (const edge of edgeTable) {
-      if (Math.floor(edge.yMin) === y) {
-        activeEdges.push({ ...edge });
-      }
-    }
-
-    // Remove edges that end at this scanline
-    for (let i = activeEdges.length - 1; i >= 0; i--) {
-      if (Math.ceil(activeEdges[i].yMax) <= y) {
-        activeEdges.splice(i, 1);
-      }
-    }
-
-    // Sort active edges by x coordinate
-    activeEdges.sort((a, b) => a.x - b.x);
-
-    // Fill between pairs of intersections
-    for (let i = 0; i < activeEdges.length; i += 2) {
-      if (i + 1 < activeEdges.length) {
-        const xStart = Math.floor(activeEdges[i].x);
-        const xEnd = Math.ceil(activeEdges[i + 1].x);
-
-        for (let x = xStart; x < xEnd; x++) {
-          const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
-          const pixelColor = getRectPixelColor({
-            imageDstBuffer,
-            pixelIndex,
-            color,
-            opacity,
-          });
-          imageDstBuffer.data[pixelIndex] = pixelColor.blue;
-          imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
-          imageDstBuffer.data[pixelIndex + 2] = pixelColor.red;
-        }
-      }
-    }
-
-    // Update x coordinates for next scanline
-    for (const edge of activeEdges) {
-      edge.x += edge.dx;
-    }
-  }
-};
-
 /**
  * Fills a triangle using the Scan Line Polygon Fill Algorithm
  * @param imageDstBuffer - The destination image buffer
@@ -234,10 +148,13 @@ export const fillPolygon = ({
   points,
   color,
   opacity,
-}: FillPolygonProps) => {
+  skipPixels,
+}: FillPolygonProps): Set<number> => {
+  const filledPixels = new Set<number>();
+
   // Build edge table from triangle vertices
   const edgeTable = buildPolygonEdgeTable(points);
-  if (edgeTable.length === 0) return;
+  if (edgeTable.length === 0) return filledPixels;
 
   // Find the bounding box of the polygon
   const yMin = Math.min(...points.map(p => p.y));
@@ -274,6 +191,8 @@ export const fillPolygon = ({
         // Fill the span between the two intersection points
         for (let x = xStart; x < xEnd; x++) {
           const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
+          if (skipPixels?.has(pixelIndex)) continue;
+          filledPixels.add(pixelIndex);
           const pixelColor = getRectPixelColor({
             imageDstBuffer,
             pixelIndex,
@@ -292,6 +211,45 @@ export const fillPolygon = ({
       edge.x += edge.dx;
     }
   }
+
+  return filledPixels;
+};
+
+interface FillRectProps {
+  imageDstBuffer: EncodedBmp;
+  points: [Position, Position, Position, Position];
+  color: Color;
+  opacity: number;
+}
+
+export const fillRect = ({
+  imageDstBuffer,
+  points,
+  color,
+  opacity,
+}: FillRectProps) => {
+  const skipPixels = fillPolygon({
+    imageDstBuffer,
+    points: [
+      { x: points[0].x, y: points[0].y },
+      { x: points[1].x, y: points[1].y },
+      { x: points[2].x, y: points[2].y },
+    ],
+    color,
+    opacity,
+  });
+
+  fillPolygon({
+    imageDstBuffer,
+    points: [
+      { x: points[1].x, y: points[1].y },
+      { x: points[2].x, y: points[2].y },
+      { x: points[3].x, y: points[3].y },
+    ],
+    color,
+    opacity,
+    skipPixels,
+  });
 };
 
 interface DrawSpectrumProps {
@@ -413,20 +371,10 @@ const drawPolarSpectrum = ({
     const point3 = calcCirclePoint(angleRadiansEnd, scaledInnerRadius);
     const point4 = calcCirclePoint(angleRadiansEnd, busRadius);
 
-    fillPolygon({
+    fillRect({
       imageDstBuffer,
       points: [
         { x: centerX + Math.round(point1.x), y: centerY + Math.round(point1.y) },
-        { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
-        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
-      ],
-      color,
-      opacity,
-    });
-
-    fillPolygon({
-      imageDstBuffer,
-      points: [
         { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
         { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
         { x: centerX + Math.round(point4.x), y: centerY + Math.round(point4.y) },
@@ -437,9 +385,12 @@ const drawPolarSpectrum = ({
   }
 };
 
-interface CreateVisualizerFrameProps {
+export interface CommonVisualizerFrameProps {
   backgroundImageBuffer: EncodedBmp;
   spectrum: number[];
+}
+
+export interface CreateVisualizerFrameProps {
   size: Size;
   position: Position;
   rotation: RotationAliasName;
@@ -449,9 +400,7 @@ interface CreateVisualizerFrameProps {
   spectrumEffect?: SpectrumEffect;
 }
 
-interface CreatePolarVisualizerFrameProps {
-  backgroundImageBuffer: EncodedBmp;
-  spectrum: number[];
+export interface CreatePolarVisualizerFrameProps {
   centerX: number;
   centerY: number;
   innerRadius: number;
@@ -462,7 +411,7 @@ interface CreatePolarVisualizerFrameProps {
   spectrumEffect?: SpectrumEffect;
 }
 
-export const createVisualizerFrameGenerator = () => {
+export const createSpectrumVisualizerFrameGenerator = () => {
   let prevSpectrum: number[] | null = null;
 
   return ({
@@ -475,10 +424,9 @@ export const createVisualizerFrameGenerator = () => {
     color,
     opacity,
     spectrumEffect,
-  }: CreateVisualizerFrameProps) => {
+  }: CommonVisualizerFrameProps & CreateVisualizerFrameProps) => {
     const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
     imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
-
 
     const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
     if (spectrumEffect === 'volume') {
@@ -536,7 +484,7 @@ export const createPolarVisualizerFrameGenerator = () => {
     color,
     opacity,
     spectrumEffect,
-  }: CreatePolarVisualizerFrameProps) => {
+  }: CommonVisualizerFrameProps & CreatePolarVisualizerFrameProps) => {
     const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
     imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
 
