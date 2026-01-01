@@ -26,7 +26,7 @@ interface MixColorProps {
   backgroundColor: Color;
 }
 
-export const mixValues =(value1: number, value1Opacity: number, value2: number) =>
+export const mixValues = (value1: number, value1Opacity: number, value2: number) =>
   Math.round(value2 * (1 - value1Opacity) + value1 * value1Opacity);
 
 export const mixColors = ({
@@ -101,6 +101,126 @@ export const drawRect = ({
   }
 };
 
+interface Edge {
+  yMin: number;
+  yMax: number;
+  x: number;
+  dx: number;
+}
+
+interface FillRectProps {
+  imageDstBuffer: EncodedBmp;
+  points: [Position, Position, Position, Position];
+  color: Color;
+  opacity: number;
+}
+
+const buildQuadEdgeTable = (points: [Position, Position, Position, Position]): Edge[] => {
+  const edges: Edge[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+
+    if (p1.y === p2.y) continue; // Skip horizontal edges
+
+    const yMin = Math.min(p1.y, p2.y);
+    const yMax = Math.max(p1.y, p2.y);
+    const x = p1.y < p2.y ? p1.x : p2.x;
+    const dx = (p2.x - p1.x) / (p2.y - p1.y);
+
+    edges.push({ yMin, yMax, x, dx });
+  }
+
+  return edges.sort((a, b) => a.yMin - b.yMin);
+};
+
+/**
+ * Fills a quadrilateral (4-sided polygon) using scan-line algorithm
+ * Only the outer edges are anti-aliased
+ */
+export const fillRect = ({
+  imageDstBuffer,
+  points,
+  color,
+  opacity,
+}: FillRectProps) => {
+  // Build edge table from all 4 vertices
+  const edgeTable = buildQuadEdgeTable(points);
+  if (edgeTable.length === 0) return;
+
+  // Find the bounding box
+  const yMin = Math.min(...points.map(p => p.y));
+  const yMax = Math.max(...points.map(p => p.y));
+
+  // Active Edge Table for scan line algorithm
+  const activeEdges: Edge[] = [];
+
+  // Scan line algorithm: process each horizontal line
+  for (let y = Math.floor(yMin); y <= Math.ceil(yMax); y++) {
+    // Add edges that start at this scanline to AET
+    for (const edge of edgeTable) {
+      if (Math.floor(edge.yMin) === y) {
+        activeEdges.push({ ...edge });
+      }
+    }
+
+    // Remove edges that end at this scanline from AET
+    for (let i = activeEdges.length - 1; i >= 0; i--) {
+      if (Math.ceil(activeEdges[i].yMax) <= y) {
+        activeEdges.splice(i, 1);
+      }
+    }
+
+    // Sort active edges by x coordinate
+    activeEdges.sort((a, b) => a.x - b.x);
+
+    // Fill pixels between pairs of intersections
+    for (let i = 0; i < activeEdges.length; i += 2) {
+      if (i + 1 < activeEdges.length) {
+        const xStart = activeEdges[i].x;
+        const xEnd = activeEdges[i + 1].x;
+
+        // Anti-aliased rendering with sub-pixel precision
+        const xStartFloor = Math.floor(xStart);
+        const xEndCeil = Math.ceil(xEnd);
+
+        for (let x = xStartFloor; x < xEndCeil; x++) {
+          const pixelIndex = imageDstBuffer.shiftPos + y * imageDstBuffer.rowBytes + x * 3;
+
+          // Calculate coverage for anti-aliasing
+          let coverage = 1.0;
+          if (x === xStartFloor) {
+            // Left edge pixel - calculate fractional coverage
+            coverage = Math.min(1.0, 1.0 - (xStart - xStartFloor));
+          } else if (x === xEndCeil - 1) {
+            // Right edge pixel - calculate fractional coverage
+            coverage = Math.min(1.0, xEnd - Math.floor(xEnd));
+          }
+
+          // Apply coverage to opacity for smooth edges
+          const effectiveOpacity = opacity * coverage;
+
+          const pixelColor = getRectPixelColor({
+            imageDstBuffer,
+            pixelIndex,
+            color,
+            opacity: effectiveOpacity,
+          });
+          imageDstBuffer.data[pixelIndex] = pixelColor.blue;
+          imageDstBuffer.data[pixelIndex + 1] = pixelColor.green;
+          imageDstBuffer.data[pixelIndex + 2] = pixelColor.red;
+        }
+      }
+    }
+
+    // Update x coordinates for next scanline (x' = x + dx)
+    for (const edge of activeEdges) {
+      edge.x += edge.dx;
+    }
+  }
+};
+
 interface DrawSpectrumProps {
   imageDstBuffer: EncodedBmp;
   spectrum: number[];
@@ -167,9 +287,79 @@ const drawSpectrum = ({
   }
 };
 
-interface CreateVisualizerFrameProps {
+const calcCirclePoint = (angleRadians: number, radius: number): Position => {
+  const circleX = radius * Math.cos(angleRadians);
+  const circleY = radius * Math.sin(angleRadians);
+  return { x: circleX, y: circleY };
+};
+
+const lerp = (start: number, end: number, t: number) =>
+  start + (end - start) * t;
+
+interface DrawPolarSpectrumProps {
+  imageDstBuffer: EncodedBmp;
+  spectrum: number[];
+  centerX: number;
+  centerY: number;
+  innerRadius: number;
+  maxBarLength: number;
+  barWidth: number;
+  color: Color;
+  opacity: number;
+}
+
+const drawPolarSpectrum = ({
+  imageDstBuffer,
+  spectrum,
+  centerX,
+  centerY,
+  innerRadius,
+  maxBarLength,
+  barWidth,
+  color,
+  opacity,
+}: DrawPolarSpectrumProps) => {
+  const angleStep = (2 * Math.PI) / spectrum.length;
+  const innerLength = innerRadius * 2 * Math.PI;
+  const radiansPerPixel = 2 * Math.PI / innerLength;
+  const barWidthInRadians = radiansPerPixel * barWidth;
+  const spectrumAverage = spectrum.reduce((a, b) => a + b, 0) / spectrum.length;
+  const scaleFactor = lerp(0.75, 1, spectrumAverage);
+  const scaledMaxOuterRadius = (innerRadius + maxBarLength) * scaleFactor;
+  const scaledInnerRadius = innerRadius * scaleFactor;
+  for (let i = 0; i < spectrum.length; i++) {
+    const currentSpectrumValue = spectrum[i] || 0;
+    const busRadius = lerp(scaledInnerRadius, scaledMaxOuterRadius, currentSpectrumValue);
+    const angle = i * angleStep;
+    const angleRadiansStart = angle;
+    const angleRadiansEnd = angle + barWidthInRadians;
+
+    const point1 = calcCirclePoint(angleRadiansStart, scaledInnerRadius);
+    const point2 = calcCirclePoint(angleRadiansStart, busRadius);
+
+    const point3 = calcCirclePoint(angleRadiansEnd, scaledInnerRadius);
+    const point4 = calcCirclePoint(angleRadiansEnd, busRadius);
+
+    fillRect({
+      imageDstBuffer,
+      points: [
+        { x: centerX + Math.round(point1.x), y: centerY + Math.round(point1.y) },
+        { x: centerX + Math.round(point2.x), y: centerY + Math.round(point2.y) },
+        { x: centerX + Math.round(point4.x), y: centerY + Math.round(point4.y) },
+        { x: centerX + Math.round(point3.x), y: centerY + Math.round(point3.y) },
+      ],
+      color,
+      opacity,
+    });
+  }
+};
+
+export interface CommonVisualizerFrameProps {
   backgroundImageBuffer: EncodedBmp;
   spectrum: number[];
+}
+
+export interface CreateVisualizerFrameProps {
   size: Size;
   position: Position;
   rotation: RotationAliasName;
@@ -179,7 +369,18 @@ interface CreateVisualizerFrameProps {
   spectrumEffect?: SpectrumEffect;
 }
 
-export const createVisualizerFrameGenerator = () => {
+export interface CreatePolarVisualizerFrameProps {
+  centerX: number;
+  centerY: number;
+  innerRadius: number;
+  maxBarLength: number;
+  barWidth: number;
+  color: Color | string;
+  opacity: number;
+  spectrumEffect?: SpectrumEffect;
+}
+
+export const createSpectrumVisualizerFrameGenerator = () => {
   let prevSpectrum: number[] | null = null;
 
   return ({
@@ -192,35 +393,34 @@ export const createVisualizerFrameGenerator = () => {
     color,
     opacity,
     spectrumEffect,
-  }: CreateVisualizerFrameProps) => {
+  }: CommonVisualizerFrameProps & CreateVisualizerFrameProps) => {
     const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
     imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
-  
-    
+
     const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
     if (spectrumEffect === 'volume') {
       drawSpectrum({
-       imageDstBuffer,
-       spectrum,
-       size,
-       position: { x: position.x + 2, y: position.y + 2 },
-       rotation,
-       margin,
-       color: rgbSpectrumColor,
-       opacity: opacity * 0.5,
-      }); 
+        imageDstBuffer,
+        spectrum,
+        size,
+        position: { x: position.x + 2, y: position.y + 2 },
+        rotation,
+        margin,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.5,
+      });
     }
     if (spectrumEffect === 'smooth' && prevSpectrum) {
       drawSpectrum({
-       imageDstBuffer,
-       spectrum: prevSpectrum,
-       size,
-       position,
-       rotation,
-       margin,
-       color: rgbSpectrumColor,
-       opacity: opacity * 0.3,
-      }); 
+        imageDstBuffer,
+        spectrum: prevSpectrum,
+        size,
+        position,
+        rotation,
+        margin,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.3,
+      });
     }
     drawSpectrum({
       imageDstBuffer,
@@ -232,9 +432,78 @@ export const createVisualizerFrameGenerator = () => {
       color: rgbSpectrumColor,
       opacity,
     });
-  
+
     prevSpectrum = spectrum;
-  
+
+    return imageDstBuffer;
+  };
+};
+
+export const createPolarVisualizerFrameGenerator = () => {
+  let prevSpectrum: number[] | null = null;
+
+  return ({
+    backgroundImageBuffer,
+    spectrum,
+    centerX,
+    centerY,
+    innerRadius,
+    maxBarLength,
+    barWidth,
+    color,
+    opacity,
+    spectrumEffect,
+  }: CommonVisualizerFrameProps & CreatePolarVisualizerFrameProps) => {
+    const imageDstBuffer = Object.assign({}, backgroundImageBuffer);
+    imageDstBuffer.data = Buffer.from(backgroundImageBuffer.data);
+
+    const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
+
+    // Draw shadow/volume effect
+    if (spectrumEffect === 'volume') {
+      drawPolarSpectrum({
+        imageDstBuffer,
+        spectrum,
+        centerX: centerX + 2,
+        centerY: centerY + 2,
+        innerRadius,
+        maxBarLength,
+        barWidth,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.5,
+      });
+    }
+
+    // Draw smooth/trail effect with previous frame
+    if (spectrumEffect === 'smooth' && prevSpectrum) {
+      drawPolarSpectrum({
+        imageDstBuffer,
+        spectrum: prevSpectrum,
+        centerX,
+        centerY,
+        innerRadius,
+        maxBarLength,
+        barWidth,
+        color: rgbSpectrumColor,
+        opacity: opacity * 0.3,
+      });
+    }
+
+    // Draw main spectrum
+    drawPolarSpectrum({
+      imageDstBuffer,
+      spectrum,
+      centerX,
+      centerY,
+      innerRadius,
+      maxBarLength,
+      barWidth,
+      color: rgbSpectrumColor,
+      opacity,
+    });
+
+    prevSpectrum = spectrum;
+
     return imageDstBuffer;
   };
 };

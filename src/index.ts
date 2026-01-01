@@ -17,11 +17,20 @@ import {
   getSpectrumRotation,
   getSpectrumEffect,
   SpectrumEffect,
+  getPolarXAbsolute,
+  getPolarYAbsolute,
+  getPolarInnerRadius,
+  getPolarMaxBarLength,
+  getPolarBarWidth,
+  getPolarEffect,
+  getPolarColor,
+  getPolarOpacityParsed,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, invertColor, Color, convertToBmp, createVisualizerFrameGenerator } from './image';
+import { parseImage, getImageColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain } from './video';
-import { createBpmEncoder } from './bpmEncoder';
+import { createBpmEncoder, EncodedBmp } from './bpmEncoder';
+import { BmpDecoder } from 'bmp-js';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -50,6 +59,16 @@ export interface Config {
       effect?: SpectrumEffect;
       color?: Color | string;
       opacity?: string;
+    };
+    polar?: {
+      x?: number | PositionAliasName;
+      y?: number | PositionAliasName;
+      innerRadius?: number;
+      maxBarLength?: number;
+      barWidth?: number;
+      effect?: SpectrumEffect;
+      color?: Color | string;
+      opacity?: string;
     }
   };
   tweaks?: {
@@ -74,8 +93,67 @@ export type RotationAliasName = typeof rotationAliasValues[number];
 const sleep = (timeout: number) =>
   new Promise(resolve => setTimeout(resolve, timeout));
 
+const createVisualizerFrameGenerator = (
+  config: Config,
+  backgroundImage: BmpDecoder,
+  spectrumBusMargin: number
+): (params: CommonVisualizerFrameProps) => EncodedBmp => {
+  if (!config.outVideo.spectrum) {
+    const createPolarVisualizerFrame = createPolarVisualizerFrameGenerator();
+    const polarX = getPolarXAbsolute(config, backgroundImage.width);
+    const polarY = getPolarYAbsolute(config, backgroundImage.height);
+    const polarInnerRadius = getPolarInnerRadius(config);
+    const polarMaxBarLength = getPolarMaxBarLength(config);
+    const polarBarWidth = getPolarBarWidth(config);
+    const polarColor = getPolarColor(config) || invertColor(getImageColor(backgroundImage));
+    const polarEffect = getPolarEffect(config);
+    const polarOpacity = getPolarOpacityParsed(config);
+
+    return (params: CommonVisualizerFrameProps) => {
+      return createPolarVisualizerFrame({
+        ...params,
+        centerX: polarX,
+        centerY: polarY,
+        innerRadius: polarInnerRadius,
+        maxBarLength: polarMaxBarLength,
+        barWidth: polarBarWidth,
+        color: polarColor,
+        opacity: polarOpacity,
+        spectrumEffect: polarEffect,
+      });
+    };
+  }
+  const createPolarVisualizerFrame = createSpectrumVisualizerFrameGenerator();
+  const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundImage.width);
+  const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundImage.height);
+  const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
+  const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
+  const spectrumRotation = getSpectrumRotation(config);
+  const spectrumColor = getSpectrumColor(config) || invertColor(getImageColor(backgroundImage));
+  const spectrumEffect = getSpectrumEffect(config);
+  const spectrumOpacity = getSpectrumOpacityParsed(config);
+
+  return (params: CommonVisualizerFrameProps) => {
+    return createPolarVisualizerFrame({
+      ...params,
+      size: { width: spectrumWidth, height: spectrumHeight },
+      position: { x: spectrumX, y: spectrumY },
+      rotation: spectrumRotation,
+      margin: spectrumBusMargin,
+      color: spectrumColor,
+      opacity: spectrumOpacity,
+      spectrumEffect,
+    });
+  };
+};
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
+    // Validate that only one visualizer type is specified
+    if (config.outVideo.spectrum && config.outVideo.polar) {
+      throw new Error('Cannot use both "spectrum" and "polar" options. Please specify only one visualizer type.');
+    }
+
     const audioFilePath = getAudioFilePath(config);
     const backgroundImagePath = getBackgroundImagePath(config);
     const outVideoPath = getOutVideoPath(config);
@@ -91,24 +169,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const spectrumBusMargin = getSpectrumBusMargin();
     const FPS = getFPS(config);
-    const spectrumWidth =
-      getSpectrumWidthAbsolute(config, backgroundImage.width);
-    const spectrumHeight =
-      getSpectrumHeightAbsolute(config, backgroundImage.height);
-    const spectrumX =
-      getSpectrumXAbsolute(config, spectrumWidth, backgroundImage.width);
-    const spectrumY =
-      getSpectrumYAbsolute(config, spectrumHeight, backgroundImage.height);
-    const spectrumRotation =
-      getSpectrumRotation(config);
-    const spectrumColor =
-      getSpectrumColor(config) ||
-      invertColor(getImageColor(backgroundImage));
-    const spectrumEffect = getSpectrumEffect(config);
-    const spectrumOpacity = getSpectrumOpacityParsed(config);
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
+
+    const createVisualizerFrame = createVisualizerFrameGenerator(config, backgroundImage, spectrumBusMargin);
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
@@ -129,7 +194,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
-    const createVisualizerFrame = createVisualizerFrameGenerator();
+
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
       processingBuffer.copyWithin(0, currentFrameData.length);
@@ -137,17 +202,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
       const audioDataParser = () => Array.from(processingBuffer);
       const spectrum = processSpectrum(audioDataParser);
-      const frameImage = createVisualizerFrame({
+      const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
         spectrum,
-        size: { width: spectrumWidth, height: spectrumHeight },
-        position: { x: spectrumX, y: spectrumY },
-        rotation: spectrumRotation,
-        margin: spectrumBusMargin,
-        color: spectrumColor,
-        opacity: spectrumOpacity,
-        spectrumEffect,
-      });
+      };
+      const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
       if (!isFrameProcessed) {
         await waitDrain(ffmpegVideoWriter.stdin);

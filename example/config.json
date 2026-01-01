@@ -7,8 +7,12 @@
   },
   "outVideo": {
     "path": "example/media/out.mp4",
-    "spectrum": {
-      "effect": "volume"
+    "polar": {
+      "x": "center",
+      "y": "middle",
+      "innerRadius": 100,
+      "maxBarLength": 160,
+      "barWidth": 15
     }
   }
 }

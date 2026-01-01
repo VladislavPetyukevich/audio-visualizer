@@ -3,7 +3,8 @@ import path from 'path';
 import {
   drawRect,
   Color,
-  createVisualizerFrameGenerator,
+  createSpectrumVisualizerFrameGenerator,
+  createPolarVisualizerFrameGenerator,
   parseImage,
   convertToBmp,
   mixValues,
@@ -76,14 +77,14 @@ describe('image', function () {
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
   });
 
-  it('createVisualizerFrame', async function () {
+  it('createSpectrumVisualizerFrameGenerator', async function () {
     const expectedImageLength = 6220854;
     const backgroundImagePath = path.resolve('example/media/horses.png');
     const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
     const backgroundImage = parseImage(backgroundImageBmpBuffer);
     const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
     const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
-    const createVisualizerFrame = createVisualizerFrameGenerator();
+    const createVisualizerFrame = createSpectrumVisualizerFrameGenerator();
     const frameSpectrumDown = createVisualizerFrame({
       backgroundImageBuffer,
       spectrum: [0.5, 0, 1],
@@ -135,5 +136,87 @@ describe('image', function () {
     });
     const resultSpectrumUpOpacity50 = frameSpectrumUpOpacity50.data.toJSON().data;
     expect(resultSpectrumUpOpacity50).to.have.length(expectedImageLength);
+  });
+
+  it('createPolarVisualizerFrameGenerator', async function () {
+    const expectedImageLength = 6220854;
+    const backgroundImagePath = path.resolve('example/media/horses.png');
+    const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath);
+    const backgroundImage = parseImage(backgroundImageBmpBuffer);
+    const bpmEncoder = createBpmEncoder({ width: backgroundImage.width, height: backgroundImage.height });
+    const backgroundImageBuffer = bpmEncoder(backgroundImage.data);
+    const createPolarVisualizerFrame = createPolarVisualizerFrameGenerator();
+
+    const framePolarBasic = createPolarVisualizerFrame({
+      backgroundImageBuffer,
+      spectrum: [0.5, 0.8, 0.3, 0.9, 0.6, 0.4, 0.7, 0.2],
+      centerX: 500,
+      centerY: 400,
+      innerRadius: 100,
+      maxBarLength: 150,
+      barWidth: 5,
+      color: { red: 255, green: 100, blue: 50 },
+      opacity: 1,
+    });
+    const resultPolarBasic = framePolarBasic.data.toJSON().data;
+    expect(resultPolarBasic).to.have.length(expectedImageLength);
+
+    const framePolarVolume = createPolarVisualizerFrame({
+      backgroundImageBuffer,
+      spectrum: [0.2, 0.5, 0.8, 0.3, 0.6, 0.9, 0.4, 0.7],
+      centerX: 500,
+      centerY: 400,
+      innerRadius: 80,
+      maxBarLength: 120,
+      barWidth: 4,
+      color: { red: 100, green: 200, blue: 255 },
+      opacity: 1,
+      spectrumEffect: 'volume',
+    });
+    const resultPolarVolume = framePolarVolume.data.toJSON().data;
+    expect(resultPolarVolume).to.have.length(expectedImageLength);
+
+    const framePolarSmooth = createPolarVisualizerFrame({
+      backgroundImageBuffer,
+      spectrum: [0.7, 0.4, 0.9, 0.2, 0.5, 0.8, 0.3, 0.6],
+      centerX: 500,
+      centerY: 400,
+      innerRadius: 90,
+      maxBarLength: 130,
+      barWidth: 6,
+      color: { red: 255, green: 255, blue: 0 },
+      opacity: 1,
+      spectrumEffect: 'smooth',
+    });
+    const resultPolarSmooth = framePolarSmooth.data.toJSON().data;
+    expect(resultPolarSmooth).to.have.length(expectedImageLength);
+
+    const framePolarOpacity50 = createPolarVisualizerFrame({
+      backgroundImageBuffer,
+      spectrum: [0.6, 0.3, 0.8, 0.5, 0.4, 0.7, 0.2, 0.9],
+      centerX: 500,
+      centerY: 400,
+      innerRadius: 100,
+      maxBarLength: 140,
+      barWidth: 5,
+      color: { red: 0, green: 255, blue: 128 },
+      opacity: 0.5,
+    });
+    const resultPolarOpacity50 = framePolarOpacity50.data.toJSON().data;
+    expect(resultPolarOpacity50).to.have.length(expectedImageLength);
+
+    const framePolarHexColor = createPolarVisualizerFrame({
+      backgroundImageBuffer,
+      spectrum: [0.5, 0.6, 0.7, 0.8, 0.9, 0.4, 0.3, 0.2],
+      centerX: 500,
+      centerY: 400,
+      innerRadius: 110,
+      maxBarLength: 160,
+      barWidth: 7,
+      color: '#FF5733',
+      opacity: 1,
+    });
+    const resultPolarHexColor = framePolarHexColor.data.toJSON().data;
+    expect(resultPolarHexColor).to.have.length(expectedImageLength);
   });
 });

@@ -11,6 +11,11 @@ export const defaults = {
   spectrumRotation: 'mirror',
   spectrumBusMargin: 12,
   spectrumOpacity: '80%',
+  polarX: 'center',
+  polarY: 'middle',
+  polarInnerRadius: 100,
+  polarMaxBarLength: 160,
+  polarBarWidth: 15,
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -242,4 +247,106 @@ export const getFfmpeg_preset = (config: Config) =>
 
 export const getFrame_processing_delay = (config: Config) =>
   config.tweaks && config.tweaks.frame_processing_delay;
+
+// Polar visualizer config getters
+const getPolarX = (config: Config) =>
+  parseNumberIfPossible(
+    (config.outVideo.polar && config.outVideo.polar.x) ||
+    defaults.polarX
+  );
+
+const getPolarY = (config: Config) =>
+  parseNumberIfPossible(
+    (config.outVideo.polar && config.outVideo.polar.y) ||
+    defaults.polarY
+  );
+
+export const getPolarXAbsolute = (
+  config: Config,
+  backgroundImageWidth: number
+) => {
+  const polarX = getPolarX(config);
+  if (typeof polarX !== 'string') {
+    return polarX;
+  }
+  try {
+    const polarXParsed = parsePositionAlias(polarX);
+    if (polarXParsed.value === 0) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return polarRadius + polarLength;
+    }
+    if (polarXParsed.value === 1) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return backgroundImageWidth - polarRadius - polarLength;
+    }
+    return polarXParsed.value * backgroundImageWidth;
+  } catch {
+    throw new Error(`Invalid polar x value: ${polarX}. Valid values: ${getValidPositionAliasValues()}.`);
+  }
+};
+
+export const getPolarYAbsolute = (
+  config: Config,
+  backgroundImageHeight: number
+) => {
+  const polarY = getPolarY(config);
+  if (typeof polarY !== 'string') {
+    return polarY;
+  }
+  try {
+    const polarYParsed = parsePositionAlias(polarY);
+    if (polarYParsed.value === 0) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return polarRadius + polarLength;
+    }
+    if (polarYParsed.value === 1) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return backgroundImageHeight - polarRadius - polarLength;
+    }
+    return polarYParsed.value * backgroundImageHeight;
+  } catch {
+    throw new Error(`Invalid polar y value: ${polarY}. Valid values: ${getValidPositionAliasValues()}.`);
+  }
+};
+
+export const getPolarInnerRadius = (config: Config) =>
+  (config.outVideo.polar && config.outVideo.polar.innerRadius) ||
+  defaults.polarInnerRadius;
+
+export const getPolarMaxBarLength = (config: Config) =>
+  (config.outVideo.polar && config.outVideo.polar.maxBarLength) ||
+  defaults.polarMaxBarLength;
+
+export const getPolarBarWidth = (config: Config) =>
+  (config.outVideo.polar && config.outVideo.polar.barWidth) ||
+  defaults.polarBarWidth;
+
+export const getPolarEffect = (config: Config) =>
+  config.outVideo.polar?.effect;
+
+export const getPolarColor = (config: Config) =>
+  config.outVideo.polar && config.outVideo.polar.color;
+
+export const getPolarOpacity = (config: Config) =>
+  (config.outVideo.polar && config.outVideo.polar.opacity) ||
+  defaults.spectrumOpacity;
+
+export const getPolarOpacityParsed = (config: Config) => {
+  const polarOpacity = getPolarOpacity(config);
+  if (!checkIsPercentValue(polarOpacity)) {
+    throw new Error(`Invalid polar opacity value: '${polarOpacity}'. Use string percent value, for example '80%'.`);
+  }
+  const percentValue = parseInt(polarOpacity);
+  if (
+    (percentValue < 0) ||
+    (percentValue > 100)
+  ) {
+    throw new Error(`Invalid polar opacity value: '${polarOpacity}'. Percent values must be in range from '0%' to '100%'.`);
+  }
+  return percentValue / 100;
+};
 
