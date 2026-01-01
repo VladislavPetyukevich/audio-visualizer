@@ -271,7 +271,16 @@ export const getPolarXAbsolute = (
   }
   try {
     const polarXParsed = parsePositionAlias(polarX);
-    // For polar center, we use the position value directly as a multiplier
+    if (polarXParsed.value === 0) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return polarRadius + polarLength;
+    }
+    if (polarXParsed.value === 1) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return backgroundImageWidth - polarRadius - polarLength;
+    }
     return polarXParsed.value * backgroundImageWidth;
   } catch {
     throw new Error(`Invalid polar x value: ${polarX}. Valid values: ${getValidPositionAliasValues()}.`);
@@ -288,7 +297,16 @@ export const getPolarYAbsolute = (
   }
   try {
     const polarYParsed = parsePositionAlias(polarY);
-    // For polar center, we use the position value directly as a multiplier
+    if (polarYParsed.value === 0) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return polarRadius + polarLength;
+    }
+    if (polarYParsed.value === 1) {
+      const polarLength = getPolarMaxBarLength(config);
+      const polarRadius = getPolarInnerRadius(config);
+      return backgroundImageHeight - polarRadius - polarLength;
+    }
     return polarYParsed.value * backgroundImageHeight;
   } catch {
     throw new Error(`Invalid polar y value: ${polarY}. Valid values: ${getValidPositionAliasValues()}.`);
