@@ -45,7 +45,10 @@ export const getAudioFilePath = (config: Config) =>
   path.resolve(config.audio.path);
 
 export const getBackgroundImagePath = (config: Config) =>
-  path.resolve(config.image.path);
+  config.image ? path.resolve(config.image.path) : undefined;
+
+export const getBackgroundVideoPath = (config: Config) =>
+  config.video ? path.resolve(config.video.path) : undefined;
 
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);

@@ -4,46 +4,42 @@ export interface EncodedBmp {
   data: Buffer;
 }
 
+const writeBmpHeader = (buffer: Buffer, width: number, height: number, rgbSize: number) => {
+  const headerInfoSize = 40;
+  const offset = 54;
+  const fileSize = rgbSize + offset;
+
+  let pos = 0;
+  buffer.write('BM', pos, 2); pos += 2;
+  buffer.writeUInt32LE(fileSize, pos); pos += 4;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+  buffer.writeUInt32LE(offset, pos); pos += 4;
+
+  buffer.writeUInt32LE(headerInfoSize, pos); pos += 4;
+  buffer.writeUInt32LE(width, pos); pos += 4;
+  buffer.writeInt32LE(-height, pos); pos += 4;
+  buffer.writeUInt16LE(1, pos); pos += 2;
+  buffer.writeUInt16LE(24, pos); pos += 2;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+  buffer.writeUInt32LE(rgbSize, pos); pos += 4;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+  buffer.writeUInt32LE(0, pos); pos += 4;
+
+  return offset;
+};
+
 export const createBpmEncoder = (imgData: { width: number; height: number; }) => {
   const width = imgData.width;
   const height = imgData.height;
   const extraBytes = width % 4;
   const rgbSize = height * (3 * width + extraBytes);
-  const headerInfoSize = 40;
-
-  /******************header***********************/
-  const flag = 'BM';
-  const reserved = 0;
   const offset = 54;
-  const fileSize = rgbSize + offset;
-  const planes = 1;
-  const bitPP = 24;
-  const compress = 0;
-  const hr = 0;
-  const vr = 0;
-  const colors = 0;
-  const importantColors = 0;
 
   return (buffer: Buffer): EncodedBmp => {
     const tempBuffer = Buffer.alloc(offset + rgbSize);
-
-    let pos = 0;
-    tempBuffer.write(flag, pos, 2); pos += 2;
-    tempBuffer.writeUInt32LE(fileSize, pos); pos += 4;
-    tempBuffer.writeUInt32LE(reserved, pos); pos += 4;
-    tempBuffer.writeUInt32LE(offset, pos); pos += 4;
-
-    tempBuffer.writeUInt32LE(headerInfoSize, pos); pos += 4;
-    tempBuffer.writeUInt32LE(width, pos); pos += 4;
-    tempBuffer.writeInt32LE(-height, pos); pos += 4;
-    tempBuffer.writeUInt16LE(planes, pos); pos += 2;
-    tempBuffer.writeUInt16LE(bitPP, pos); pos += 2;
-    tempBuffer.writeUInt32LE(compress, pos); pos += 4;
-    tempBuffer.writeUInt32LE(rgbSize, pos); pos += 4;
-    tempBuffer.writeUInt32LE(hr, pos); pos += 4;
-    tempBuffer.writeUInt32LE(vr, pos); pos += 4;
-    tempBuffer.writeUInt32LE(colors, pos); pos += 4;
-    tempBuffer.writeUInt32LE(importantColors, pos); pos += 4;
+    const pos = writeBmpHeader(tempBuffer, width, height, rgbSize);
 
     let i = 0;
     const rowBytes = 3 * width + extraBytes;
@@ -59,6 +55,36 @@ export const createBpmEncoder = (imgData: { width: number; height: number; }) =>
       if (extraBytes > 0) {
         const fillOffset = pos + y * rowBytes + width * 3;
         tempBuffer.fill(0, fillOffset, fillOffset + extraBytes);
+      }
+    }
+
+    return {
+      shiftPos: pos,
+      rowBytes,
+      data: tempBuffer
+    };
+  };
+};
+
+export const createBgrFrameEncoder = (imgData: { width: number; height: number }) => {
+  const width = imgData.width;
+  const height = imgData.height;
+  const extraBytes = width % 4;
+  const rowBytes = 3 * width + extraBytes;
+  const rgbSize = height * rowBytes;
+  const offset = 54;
+
+  const tempBuffer = Buffer.alloc(offset + rgbSize);
+  const pos = writeBmpHeader(tempBuffer, width, height, rgbSize);
+
+  return (bgrBuffer: Buffer): EncodedBmp => {
+    if (extraBytes === 0) {
+      bgrBuffer.copy(tempBuffer, pos, 0, width * height * 3);
+    } else {
+      for (let y = 0; y < height; y++) {
+        const srcOffset = y * width * 3;
+        const dstOffset = pos + y * rowBytes;
+        bgrBuffer.copy(tempBuffer, dstOffset, srcOffset, srcOffset + width * 3);
       }
     }
 

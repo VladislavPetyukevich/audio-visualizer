@@ -548,6 +548,25 @@ export const getImageColor = (image: BmpDecoder): Color => {
   };
 };
 
+export const getVideoFrameColor = (bgrBuffer: Buffer, width: number, height: number): Color => {
+  let blueSum = 0;
+  let greenSum = 0;
+  let redSum = 0;
+  const pixelsCount = width * height;
+
+  for (let i = 0; i < bgrBuffer.length; i += 3) {
+    blueSum += bgrBuffer[i];
+    greenSum += bgrBuffer[i + 1];
+    redSum += bgrBuffer[i + 2];
+  }
+
+  return {
+    red: ~~(redSum / pixelsCount),
+    green: ~~(greenSum / pixelsCount),
+    blue: ~~(blueSum / pixelsCount),
+  };
+};
+
 export const invertColor = (color: Color) =>
   ({ red: 255 - color.red, green: 255 - color.green, blue: 255 - color.blue });
 
