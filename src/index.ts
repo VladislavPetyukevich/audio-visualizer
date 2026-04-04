@@ -29,7 +29,7 @@ import {
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
-import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame } from './video';
+import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, SceneChange } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { BmpDecoder } from 'bmp-js';
 
@@ -197,7 +197,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     let videoFrameSize: number = 0;
     let encodeVideoFrame: ((bgrBuffer: Buffer) => EncodedBmp) | undefined;
 
-    if (useVideoBackground) {
+    let sceneChanges: SceneChange[] = [];
+
+    if (useVideoBackground && backgroundVideoPath) {
+      sceneChanges = await detectSceneChanges(backgroundVideoPath);
+      console.log(sceneChanges);
       const videoInfo = await getVideoInfo(backgroundVideoPath);
       backgroundWidth = videoInfo.width;
       backgroundHeight = videoInfo.height;
