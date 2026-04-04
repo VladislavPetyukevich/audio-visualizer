@@ -32,6 +32,8 @@ import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, conv
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, SceneChange } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { BmpDecoder } from 'bmp-js';
+import { createBeatDetector } from './beats';
+export { BeatInfo, BeatDetectorOptions } from './beats';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -248,6 +250,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const skipFramesCount = FPS < 45 ? 1 : 2;
     const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
+    const detectBeat = createBeatDetector(FPS);
 
     for (let i = 0; i < framesCount; i++) {
       const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
@@ -271,9 +274,12 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         backgroundImageBuffer = staticBackgroundBuffer!;
       }
 
+      const beat = detectBeat(spectrum);
+
       const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
         spectrum,
+        beat,
       };
       const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
