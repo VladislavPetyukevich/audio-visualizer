@@ -110,12 +110,46 @@ export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
     });
   });
 
+const isOrientationMismatch = (sw: number, sh: number, tw: number, th: number): boolean =>
+  (sw > sh && tw < th) || (sw < sh && tw > th);
+
+export const buildVideoFilter = (
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+): string => {
+  if (!isOrientationMismatch(sourceWidth, sourceHeight, targetWidth, targetHeight)) {
+    return `scale=${targetWidth}:${targetHeight}`;
+  }
+
+  const targetAspect = targetWidth / targetHeight;
+  const makeEven = (n: number) => Math.floor(n / 2) * 2;
+  let cropW: number, cropH: number, cropX: number, cropY: number;
+
+  if (sourceWidth / sourceHeight > targetAspect) {
+    cropW = makeEven(Math.round(sourceHeight * targetAspect));
+    cropH = makeEven(sourceHeight);
+    cropX = Math.floor((sourceWidth - cropW) / 2);
+    cropY = Math.floor((sourceHeight - cropH) / 2);
+  } else {
+    cropW = makeEven(sourceWidth);
+    cropH = makeEven(Math.round(sourceWidth / targetAspect));
+    cropX = Math.floor((sourceWidth - cropW) / 2);
+    cropY = Math.floor((sourceHeight - cropH) / 2);
+  }
+
+  return `crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${targetWidth}:${targetHeight}`;
+};
+
 export const spawnVideoFrameReader = (config: {
   videoPath: string;
   fps: number;
   totalFrames: number;
   width?: number;
   height?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 }) => {
   if (!ffmpegPath) {
     throw new Error('ffmpeg path not found');
@@ -127,7 +161,10 @@ export const spawnVideoFrameReader = (config: {
     '-frames:v', `${config.totalFrames}`,
   ];
   if (config.width && config.height) {
-    args.push('-vf', `scale=${config.width}:${config.height}`);
+    const filter = config.sourceWidth && config.sourceHeight
+      ? buildVideoFilter(config.sourceWidth, config.sourceHeight, config.width, config.height)
+      : `scale=${config.width}:${config.height}`;
+    args.push('-vf', filter);
   }
   args.push(
     '-f', 'rawvideo',
@@ -278,6 +315,8 @@ export const spawnConcatVideoFrameReader = (config: {
   totalFrames: number;
   width?: number;
   height?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 }) => {
   if (!ffmpegPath) {
     throw new Error('ffmpeg path not found');
@@ -290,7 +329,10 @@ export const spawnConcatVideoFrameReader = (config: {
     '-frames:v', `${config.totalFrames}`,
   ];
   if (config.width && config.height) {
-    args.push('-vf', `scale=${config.width}:${config.height}`);
+    const filter = config.sourceWidth && config.sourceHeight
+      ? buildVideoFilter(config.sourceWidth, config.sourceHeight, config.width, config.height)
+      : `scale=${config.width}:${config.height}`;
+    args.push('-vf', filter);
   }
   args.push(
     '-f', 'rawvideo',

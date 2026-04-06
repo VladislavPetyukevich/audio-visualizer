@@ -271,7 +271,12 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         concatFilePath,
         fps: FPS,
         totalFrames: framesCount,
-        ...(outputResolution && { width: backgroundWidth, height: backgroundHeight }),
+        ...(outputResolution && {
+          width: backgroundWidth,
+          height: backgroundHeight,
+          sourceWidth: videoInfo.width,
+          sourceHeight: videoInfo.height,
+        }),
       });
 
       const firstFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);

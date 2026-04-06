@@ -543,6 +543,29 @@ export const convertToBmp = async (filePath: string, targetWidth?: number, targe
     try {
       const image = await Jimp.read(filePath);
       if (targetWidth && targetHeight) {
+        const sw = image.getWidth();
+        const sh = image.getHeight();
+        const isOrientationMismatch =
+          (sw > sh && targetWidth < targetHeight) ||
+          (sw < sh && targetWidth > targetHeight);
+
+        if (isOrientationMismatch) {
+          const targetAspect = targetWidth / targetHeight;
+          let cropW: number, cropH: number, cropX: number, cropY: number;
+          if (sw / sh > targetAspect) {
+            cropW = Math.round(sh * targetAspect);
+            cropH = sh;
+            cropX = Math.round((sw - cropW) / 2);
+            cropY = 0;
+          } else {
+            cropW = sw;
+            cropH = Math.round(sw / targetAspect);
+            cropX = 0;
+            cropY = Math.round((sh - cropH) / 2);
+          }
+          image.crop(cropX, cropY, cropW, cropH);
+        }
+
         image.resize(targetWidth, targetHeight);
       }
       image.getBuffer("image/bmp", (err, value) => {
