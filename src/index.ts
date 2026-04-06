@@ -29,10 +29,10 @@ import {
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
-import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, SceneChange } from './video';
+import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, SceneChange, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { BmpDecoder } from 'bmp-js';
-import { createBeatDetector } from './beats';
+import { createBeatDetector, BeatInfo } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
 
 export const PCM_FORMAT = {
@@ -155,6 +155,47 @@ const createVisualizerFrameGenerator = (
   };
 };
 
+interface PreProcessedAudio {
+  spectrums: number[][];
+  beats: BeatInfo[];
+  beatFrameIndices: number[];
+}
+
+const preProcessAudio = (
+  audioBuffer: Buffer,
+  sampleRate: number,
+  fps: number,
+  framesCount: number,
+): PreProcessedAudio => {
+  const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
+  const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
+  const skipFramesCount = fps < 45 ? 1 : 2;
+  const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
+  const detectBeat = createBeatDetector(fps);
+
+  const spectrums: number[][] = [];
+  const beats: BeatInfo[] = [];
+  const beatFrameIndices: number[] = [];
+
+  for (let i = 0; i < framesCount; i++) {
+    const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
+    processingBuffer.copyWithin(0, currentFrameData.length);
+    processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
+
+    const audioDataParser = () => Array.from(processingBuffer);
+    const spectrum = processSpectrum(audioDataParser);
+    const beat = detectBeat(spectrum);
+
+    spectrums.push(spectrum);
+    beats.push(beat);
+    if (beat.isBeat) {
+      beatFrameIndices.push(i);
+    }
+  }
+
+  return { spectrums, beats, beatFrameIndices };
+};
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
     if (config.outVideo.spectrum && config.outVideo.polar) {
@@ -188,8 +229,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
-    const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
-    const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
+
+    const preprocessed = preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
 
     let backgroundWidth: number;
     let backgroundHeight: number;
@@ -198,21 +239,30 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     let videoFrameReader: ReturnType<typeof spawnVideoFrameReader> | undefined;
     let videoFrameSize: number = 0;
     let encodeVideoFrame: ((bgrBuffer: Buffer) => EncodedBmp) | undefined;
-
-    let sceneChanges: SceneChange[] = [];
+    let concatFilePath: string | undefined;
 
     if (useVideoBackground && backgroundVideoPath) {
-      sceneChanges = await detectSceneChanges(backgroundVideoPath);
-      console.log(sceneChanges);
-      const videoInfo = await getVideoInfo(backgroundVideoPath);
+      const [sceneChanges, videoInfo] = await Promise.all([
+        detectSceneChanges(backgroundVideoPath),
+        getVideoInfo(backgroundVideoPath),
+      ]);
       backgroundWidth = videoInfo.width;
       backgroundHeight = videoInfo.height;
 
       videoFrameSize = backgroundWidth * backgroundHeight * 3;
       encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
 
-      videoFrameReader = spawnVideoFrameReader({
-        videoPath: backgroundVideoPath,
+      const segments = buildBeatSyncedSegments(
+        preprocessed.beatFrameIndices,
+        framesCount,
+        sceneChanges,
+        videoInfo.duration,
+      );
+
+      concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, FPS);
+
+      videoFrameReader = spawnConcatVideoFrameReader({
+        concatFilePath,
         fps: FPS,
         totalFrames: framesCount,
       });
@@ -248,17 +298,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     });
     ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
 
-    const skipFramesCount = FPS < 45 ? 1 : 2;
-    const processSpectrum = createSpectrumsProcessor(sampleRate, skipFramesCount);
-    const detectBeat = createBeatDetector(FPS);
-
     for (let i = 0; i < framesCount; i++) {
-      const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
-      processingBuffer.copyWithin(0, currentFrameData.length);
-      processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
-
-      const audioDataParser = () => Array.from(processingBuffer);
-      const spectrum = processSpectrum(audioDataParser);
+      const spectrum = preprocessed.spectrums[i];
+      const beat = preprocessed.beats[i];
 
       let backgroundImageBuffer: EncodedBmp;
       if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
@@ -273,8 +315,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       } else {
         backgroundImageBuffer = staticBackgroundBuffer!;
       }
-
-      const beat = detectBeat(spectrum);
 
       const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
@@ -296,6 +336,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     if (videoFrameReader) {
       videoFrameReader.kill();
+    }
+    if (concatFilePath) {
+      cleanupConcatFile(concatFilePath);
     }
     ffmpegVideoWriter.stdin.end();
   });

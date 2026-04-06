@@ -1,5 +1,8 @@
 import { Readable, Writable } from 'stream';
 import { spawn } from 'child_process';
+import { writeFileSync, unlinkSync } from 'fs';
+import { resolve as resolvePath, join as joinPath } from 'path';
+import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 
 interface FfmpegVideoWriterConfig {
@@ -37,6 +40,7 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
 export interface VideoInfo {
   width: number;
   height: number;
+  duration: number;
 }
 
 export interface SceneChange {
@@ -80,7 +84,7 @@ export const detectSceneChanges = (videoPath: string, threshold = 0.4): Promise<
   });
 
 export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
-  new Promise((resolve, reject) => {
+  new Promise((resolvePromise, reject) => {
     if (!ffmpegPath) {
       reject(new Error('ffmpeg path not found'));
       return;
@@ -89,12 +93,20 @@ export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
     let stderr = '';
     ffmpeg.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
     ffmpeg.on('close', () => {
-      const match = stderr.match(/Stream.*Video:.*?(\d{2,5})x(\d{2,5})/);
-      if (!match) {
+      const dimMatch = stderr.match(/Stream.*Video:.*?(\d{2,5})x(\d{2,5})/);
+      if (!dimMatch) {
         reject(new Error(`Could not determine video dimensions for: ${videoPath}`));
         return;
       }
-      resolve({ width: parseInt(match[1]), height: parseInt(match[2]) });
+      const durMatch = stderr.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      const duration = durMatch
+        ? parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3])
+        : 0;
+      resolvePromise({
+        width: parseInt(dimMatch[1]),
+        height: parseInt(dimMatch[2]),
+        duration,
+      });
     });
   });
 
@@ -165,3 +177,96 @@ export const calculateProgress = (framesCount: number, callback: (progress: numb
 
 export const waitDrain = (stream: Writable) =>
   new Promise<void>(resolve => stream.once('drain', resolve));
+
+export interface VideoSegment {
+  outputStartFrame: number;
+  videoSeekSeconds: number;
+  frameCount: number;
+}
+
+export const buildBeatSyncedSegments = (
+  beatFrameIndices: number[],
+  totalFrames: number,
+  sceneChanges: SceneChange[],
+  videoDuration: number,
+): VideoSegment[] => {
+  let seekPositions: number[];
+  if (sceneChanges.length >= 2) {
+    seekPositions = sceneChanges.map(sc => sc.ptsTime);
+  } else {
+    const count = Math.max(10, Math.ceil(videoDuration / 3));
+    seekPositions = Array.from({ length: count }, (_, i) => (i * videoDuration) / count);
+  }
+
+  const boundaries = [0, ...beatFrameIndices];
+  if (boundaries[boundaries.length - 1] !== totalFrames) {
+    boundaries.push(totalFrames);
+  }
+  const unique = Array.from(new Set(boundaries)).sort((a, b) => a - b);
+
+  const segments: VideoSegment[] = [];
+  for (let i = 0; i < unique.length - 1; i++) {
+    segments.push({
+      outputStartFrame: unique[i],
+      videoSeekSeconds: seekPositions[i % seekPositions.length],
+      frameCount: unique[i + 1] - unique[i],
+    });
+  }
+  return segments;
+};
+
+export const writeConcatFile = (
+  segments: VideoSegment[],
+  videoPath: string,
+  videoDuration: number,
+  fps: number,
+): string => {
+  const absVideoPath = resolvePath(videoPath).replace(/\\/g, '/');
+  const escaped = absVideoPath.replace(/'/g, "'\\''");
+  let content = '';
+
+  for (const seg of segments) {
+    const segDuration = seg.frameCount / fps;
+    let remaining = segDuration;
+    let pos = seg.videoSeekSeconds % videoDuration;
+
+    while (remaining > 0.001) {
+      const available = videoDuration - pos;
+      const take = Math.min(remaining, available);
+      content += `file '${escaped}'\n`;
+      content += `inpoint ${pos.toFixed(6)}\n`;
+      content += `outpoint ${(pos + take).toFixed(6)}\n\n`;
+      remaining -= take;
+      pos = 0;
+    }
+  }
+
+  const concatPath = joinPath(tmpdir(), `av-concat-${Date.now()}.txt`);
+  writeFileSync(concatPath, content, 'utf-8');
+  return concatPath;
+};
+
+export const spawnConcatVideoFrameReader = (config: {
+  concatFilePath: string;
+  fps: number;
+  totalFrames: number;
+}) => {
+  if (!ffmpegPath) {
+    throw new Error('ffmpeg path not found');
+  }
+  return spawn(ffmpegPath, [
+    '-f', 'concat',
+    '-safe', '0',
+    '-i', config.concatFilePath,
+    '-r', `${config.fps}`,
+    '-frames:v', `${config.totalFrames}`,
+    '-f', 'rawvideo',
+    '-pix_fmt', 'bgr24',
+    '-v', 'quiet',
+    'pipe:1'
+  ]);
+};
+
+export const cleanupConcatFile = (filePath: string) => {
+  try { unlinkSync(filePath); } catch {}
+};
