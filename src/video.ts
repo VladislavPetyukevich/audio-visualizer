@@ -184,15 +184,33 @@ export interface VideoSegment {
   frameCount: number;
 }
 
+const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, minDuration = 2): SceneChange[] => {
+  if (sceneChanges.length === 0) return [];
+  const merged: SceneChange[] = [sceneChanges[0]];
+  for (let i = 1; i < sceneChanges.length; i++) {
+    const lastKept = merged[merged.length - 1];
+    const gap = sceneChanges[i].ptsTime - lastKept.ptsTime;
+    if (gap >= minDuration) {
+      merged.push(sceneChanges[i]);
+    }
+  }
+  const lastScene = merged[merged.length - 1];
+  if (videoDuration - lastScene.ptsTime < minDuration && merged.length > 1) {
+    merged.pop();
+  }
+  return merged;
+};
+
 export const buildBeatSyncedSegments = (
   beatFrameIndices: number[],
   totalFrames: number,
   sceneChanges: SceneChange[],
   videoDuration: number,
 ): VideoSegment[] => {
+  const consolidated = mergeSmallScenes(sceneChanges, videoDuration);
   let seekPositions: number[];
-  if (sceneChanges.length >= 2) {
-    seekPositions = sceneChanges.map(sc => sc.ptsTime);
+  if (consolidated.length >= 2) {
+    seekPositions = consolidated.map(sc => sc.ptsTime);
   } else {
     const count = Math.max(10, Math.ceil(videoDuration / 3));
     seekPositions = Array.from({ length: count }, (_, i) => (i * videoDuration) / count);
