@@ -538,10 +538,13 @@ export const createPolarVisualizerFrameGenerator = () => {
   };
 };
 
-export const convertToBmp = async (filePath: string) =>
+export const convertToBmp = async (filePath: string, targetWidth?: number, targetHeight?: number) =>
   new Promise<Buffer>(async (resolve, reject) => {
     try {
       const image = await Jimp.read(filePath);
+      if (targetWidth && targetHeight) {
+        image.resize(targetWidth, targetHeight);
+      }
       image.getBuffer("image/bmp", (err, value) => {
         if (err) {
           reject(err);

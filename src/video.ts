@@ -114,20 +114,28 @@ export const spawnVideoFrameReader = (config: {
   videoPath: string;
   fps: number;
   totalFrames: number;
+  width?: number;
+  height?: number;
 }) => {
   if (!ffmpegPath) {
     throw new Error('ffmpeg path not found');
   }
-  return spawn(ffmpegPath, [
+  const args = [
     '-stream_loop', '-1',
     '-i', config.videoPath,
     '-r', `${config.fps}`,
     '-frames:v', `${config.totalFrames}`,
+  ];
+  if (config.width && config.height) {
+    args.push('-vf', `scale=${config.width}:${config.height}`);
+  }
+  args.push(
     '-f', 'rawvideo',
     '-pix_fmt', 'bgr24',
     '-v', 'quiet',
     'pipe:1'
-  ]);
+  );
+  return spawn(ffmpegPath, args);
 };
 
 export const readVideoFrame = (stream: Readable, frameSize: number): Promise<Buffer | null> =>
@@ -268,21 +276,29 @@ export const spawnConcatVideoFrameReader = (config: {
   concatFilePath: string;
   fps: number;
   totalFrames: number;
+  width?: number;
+  height?: number;
 }) => {
   if (!ffmpegPath) {
     throw new Error('ffmpeg path not found');
   }
-  return spawn(ffmpegPath, [
+  const args = [
     '-f', 'concat',
     '-safe', '0',
     '-i', config.concatFilePath,
     '-r', `${config.fps}`,
     '-frames:v', `${config.totalFrames}`,
+  ];
+  if (config.width && config.height) {
+    args.push('-vf', `scale=${config.width}:${config.height}`);
+  }
+  args.push(
     '-f', 'rawvideo',
     '-pix_fmt', 'bgr24',
     '-v', 'quiet',
     'pipe:1'
-  ]);
+  );
+  return spawn(ffmpegPath, args);
 };
 
 export const cleanupConcatFile = (filePath: string) => {

@@ -56,6 +56,9 @@ export const getOutVideoPath = (config: Config) =>
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
 
+export const getOutputResolution = (config: Config) =>
+  config.outVideo.resolution;
+
 export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 
 const getSpectrumWidth = (config: Config) =>

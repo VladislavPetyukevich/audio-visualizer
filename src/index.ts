@@ -14,6 +14,7 @@ import {
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
+  getOutputResolution,
   rotationAliasValues,
   getSpectrumRotation,
   getSpectrumEffect,
@@ -56,6 +57,10 @@ export interface Config {
   outVideo: {
     path: string;
     fps?: number;
+    resolution?: {
+      width: number;
+      height: number;
+    };
     spectrum?: {
       width?: SpectrumSizeValue;
       height?: SpectrumSizeValue;
@@ -229,6 +234,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
+    const outputResolution = getOutputResolution(config);
 
     const preprocessed = preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
 
@@ -246,8 +252,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         detectSceneChanges(backgroundVideoPath),
         getVideoInfo(backgroundVideoPath),
       ]);
-      backgroundWidth = videoInfo.width;
-      backgroundHeight = videoInfo.height;
+      backgroundWidth = outputResolution?.width ?? videoInfo.width;
+      backgroundHeight = outputResolution?.height ?? videoInfo.height;
 
       videoFrameSize = backgroundWidth * backgroundHeight * 3;
       encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
@@ -265,6 +271,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         concatFilePath,
         fps: FPS,
         totalFrames: framesCount,
+        ...(outputResolution && { width: backgroundWidth, height: backgroundHeight }),
       });
 
       const firstFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
@@ -274,7 +281,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       defaultColor = getVideoFrameColor(firstFrame, backgroundWidth, backgroundHeight);
       staticBackgroundBuffer = encodeVideoFrame(firstFrame);
     } else {
-      const backgroundImageBmpBuffer = await convertToBmp(backgroundImagePath!);
+      const backgroundImageBmpBuffer = await convertToBmp(
+        backgroundImagePath!,
+        outputResolution?.width,
+        outputResolution?.height,
+      );
       const backgroundImage = parseImage(backgroundImageBmpBuffer);
       backgroundWidth = backgroundImage.width;
       backgroundHeight = backgroundImage.height;
