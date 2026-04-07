@@ -201,6 +201,108 @@ const preProcessAudio = (
   return { spectrums, beats, beatFrameIndices };
 };
 
+async function prepareBackgroundForRender(params: {
+  useVideoBackground: boolean;
+  backgroundVideoPath: string | undefined;
+  backgroundImagePath: string | undefined;
+  beatFrameIndices: number[];
+  framesCount: number;
+  outputResolution: ReturnType<typeof getOutputResolution>;
+  fps: number;
+}): Promise<{
+  backgroundWidth: number;
+  backgroundHeight: number;
+  defaultColor: Color;
+  staticBackgroundBuffer: EncodedBmp;
+  videoFrameReader?: ReturnType<typeof spawnVideoFrameReader>;
+  videoFrameSize: number;
+  encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
+  concatFilePath?: string;
+}> {
+  const {
+    useVideoBackground,
+    backgroundVideoPath,
+    backgroundImagePath,
+    beatFrameIndices,
+    framesCount,
+    outputResolution,
+    fps,
+  } = params;
+
+  if (useVideoBackground && backgroundVideoPath) {
+    const [sceneChanges, videoInfo] = await Promise.all([
+      detectSceneChanges(backgroundVideoPath),
+      getVideoInfo(backgroundVideoPath),
+    ]);
+    const backgroundWidth = outputResolution?.width ?? videoInfo.width;
+    const backgroundHeight = outputResolution?.height ?? videoInfo.height;
+
+    const videoFrameSize = backgroundWidth * backgroundHeight * 3;
+    const encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
+
+    const segments = buildBeatSyncedSegments(
+      beatFrameIndices,
+      framesCount,
+      sceneChanges,
+      videoInfo.duration,
+    );
+
+    const concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, fps);
+
+    const videoFrameReader = spawnConcatVideoFrameReader({
+      concatFilePath,
+      fps,
+      totalFrames: framesCount,
+      ...(outputResolution && {
+        width: backgroundWidth,
+        height: backgroundHeight,
+        sourceWidth: videoInfo.width,
+        sourceHeight: videoInfo.height,
+      }),
+    });
+
+    const firstFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
+    if (!firstFrame) {
+      throw new Error(`Could not read frames from video: ${backgroundVideoPath}`);
+    }
+    const defaultColor = getVideoFrameColor(firstFrame, backgroundWidth, backgroundHeight);
+    const staticBackgroundBuffer = encodeVideoFrame(firstFrame);
+    return {
+      backgroundWidth,
+      backgroundHeight,
+      defaultColor,
+      staticBackgroundBuffer,
+      videoFrameReader,
+      videoFrameSize,
+      encodeVideoFrame,
+      concatFilePath,
+    };
+  }
+
+  if (!backgroundImagePath) {
+    throw new Error('Background image path is required when not using video background.');
+  }
+  const backgroundImageBmpBuffer = await convertToBmp(
+    backgroundImagePath,
+    outputResolution?.width,
+    outputResolution?.height,
+  );
+  const backgroundImage = parseImage(backgroundImageBmpBuffer);
+  const backgroundWidth = backgroundImage.width;
+  const backgroundHeight = backgroundImage.height;
+  const defaultColor = getImageColor(backgroundImage);
+
+  const bpmEncoder = createBpmEncoder({ width: backgroundWidth, height: backgroundHeight });
+  const staticBackgroundBuffer = bpmEncoder(backgroundImage.data);
+  return {
+    backgroundWidth,
+    backgroundHeight,
+    defaultColor,
+    staticBackgroundBuffer,
+    videoFrameSize: 0,
+  };
+}
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
     if (config.outVideo.spectrum && config.outVideo.polar) {
@@ -238,67 +340,24 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const preprocessed = preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
 
-    let backgroundWidth: number;
-    let backgroundHeight: number;
-    let defaultColor: Color;
-    let staticBackgroundBuffer: EncodedBmp | undefined;
-    let videoFrameReader: ReturnType<typeof spawnVideoFrameReader> | undefined;
-    let videoFrameSize: number = 0;
-    let encodeVideoFrame: ((bgrBuffer: Buffer) => EncodedBmp) | undefined;
-    let concatFilePath: string | undefined;
-
-    if (useVideoBackground && backgroundVideoPath) {
-      const [sceneChanges, videoInfo] = await Promise.all([
-        detectSceneChanges(backgroundVideoPath),
-        getVideoInfo(backgroundVideoPath),
-      ]);
-      backgroundWidth = outputResolution?.width ?? videoInfo.width;
-      backgroundHeight = outputResolution?.height ?? videoInfo.height;
-
-      videoFrameSize = backgroundWidth * backgroundHeight * 3;
-      encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
-
-      const segments = buildBeatSyncedSegments(
-        preprocessed.beatFrameIndices,
-        framesCount,
-        sceneChanges,
-        videoInfo.duration,
-      );
-
-      concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, FPS);
-
-      videoFrameReader = spawnConcatVideoFrameReader({
-        concatFilePath,
-        fps: FPS,
-        totalFrames: framesCount,
-        ...(outputResolution && {
-          width: backgroundWidth,
-          height: backgroundHeight,
-          sourceWidth: videoInfo.width,
-          sourceHeight: videoInfo.height,
-        }),
-      });
-
-      const firstFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
-      if (!firstFrame) {
-        throw new Error(`Could not read frames from video: ${backgroundVideoPath}`);
-      }
-      defaultColor = getVideoFrameColor(firstFrame, backgroundWidth, backgroundHeight);
-      staticBackgroundBuffer = encodeVideoFrame(firstFrame);
-    } else {
-      const backgroundImageBmpBuffer = await convertToBmp(
-        backgroundImagePath!,
-        outputResolution?.width,
-        outputResolution?.height,
-      );
-      const backgroundImage = parseImage(backgroundImageBmpBuffer);
-      backgroundWidth = backgroundImage.width;
-      backgroundHeight = backgroundImage.height;
-      defaultColor = getImageColor(backgroundImage);
-
-      const bpmEncoder = createBpmEncoder({ width: backgroundWidth, height: backgroundHeight });
-      staticBackgroundBuffer = bpmEncoder(backgroundImage.data);
-    }
+    const {
+      backgroundWidth,
+      backgroundHeight,
+      defaultColor,
+      staticBackgroundBuffer,
+      videoFrameReader,
+      videoFrameSize,
+      encodeVideoFrame,
+      concatFilePath,
+    } = await prepareBackgroundForRender({
+      useVideoBackground,
+      backgroundVideoPath,
+      backgroundImagePath,
+      beatFrameIndices: preprocessed.beatFrameIndices,
+      framesCount,
+      outputResolution,
+      fps: FPS,
+    });
 
     const createVisualizerFrame = createVisualizerFrameGenerator(
       config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
