@@ -162,7 +162,6 @@ const createVisualizerFrameGenerator = (
 
 interface PreProcessedAudio {
   spectrums: number[][];
-  beats: BeatInfo[];
   beatFrameIndices: number[];
 }
 
@@ -179,7 +178,6 @@ const preProcessAudio = (
   const detectBeat = createBeatDetector(fps);
 
   const spectrums: number[][] = [];
-  const beats: BeatInfo[] = [];
   const beatFrameIndices: number[] = [];
 
   for (let i = 0; i < framesCount; i++) {
@@ -192,13 +190,12 @@ const preProcessAudio = (
     const beat = detectBeat(spectrum);
 
     spectrums.push(spectrum);
-    beats.push(beat);
     if (beat.isBeat) {
       beatFrameIndices.push(i);
     }
   }
 
-  return { spectrums, beats, beatFrameIndices };
+  return { spectrums, beatFrameIndices };
 };
 
 async function prepareBackgroundForRender(params: {
@@ -375,7 +372,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     for (let i = 0; i < framesCount; i++) {
       const spectrum = preprocessed.spectrums[i];
-      const beat = preprocessed.beats[i];
 
       let backgroundImageBuffer: EncodedBmp;
       if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
