@@ -3,7 +3,6 @@ import { decode, BmpDecoder } from 'bmp-js';
 import { EncodedBmp } from './bpmEncoder';
 import Jimp from 'jimp';
 import { SpectrumEffect } from './config';
-import { BeatInfo } from './beats';
 
 export interface Color {
   red: number;
@@ -358,7 +357,6 @@ const drawPolarSpectrum = ({
 export interface CommonVisualizerFrameProps {
   backgroundImageBuffer: EncodedBmp;
   spectrum: number[];
-  beat?: BeatInfo;
 }
 
 export interface CreateVisualizerFrameProps {
@@ -388,7 +386,6 @@ export const createSpectrumVisualizerFrameGenerator = () => {
   return ({
     backgroundImageBuffer,
     spectrum,
-    beat,
     size,
     position,
     rotation,
@@ -436,20 +433,6 @@ export const createSpectrumVisualizerFrameGenerator = () => {
       opacity,
     });
 
-    if (beat && beat.intensity > 0.01) {
-      const beatSpectrum = spectrum.map(v => Math.min(1, v + beat.intensity * 0.5));
-      drawSpectrum({
-        imageDstBuffer,
-        spectrum: beatSpectrum,
-        size: { width: size.width, height: size.height * (1 + beat.intensity * 0.15) },
-        position,
-        rotation,
-        margin,
-        color: rgbSpectrumColor,
-        opacity: beat.intensity * 0.35,
-      });
-    }
-
     prevSpectrum = spectrum;
 
     return imageDstBuffer;
@@ -462,7 +445,6 @@ export const createPolarVisualizerFrameGenerator = () => {
   return ({
     backgroundImageBuffer,
     spectrum,
-    beat,
     centerX,
     centerY,
     innerRadius,
@@ -516,21 +498,6 @@ export const createPolarVisualizerFrameGenerator = () => {
       color: rgbSpectrumColor,
       opacity,
     });
-
-    if (beat && beat.intensity > 0.01) {
-      const beatSpectrum = spectrum.map(v => Math.min(1, v + beat.intensity * 0.5));
-      drawPolarSpectrum({
-        imageDstBuffer,
-        spectrum: beatSpectrum,
-        centerX,
-        centerY,
-        innerRadius,
-        maxBarLength: maxBarLength * (1 + beat.intensity * 0.15),
-        barWidth,
-        color: rgbSpectrumColor,
-        opacity: beat.intensity * 0.35,
-      });
-    }
 
     prevSpectrum = spectrum;
 

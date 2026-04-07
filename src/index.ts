@@ -335,7 +335,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
         spectrum,
-        beat,
       };
       const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
       const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
