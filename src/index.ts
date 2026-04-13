@@ -33,8 +33,7 @@ import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './au
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
 import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { BmpDecoder } from 'bmp-js';
-import { createBeatDetector, BeatInfo } from './beats';
+import { createBeatDetector } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
 
 export const PCM_FORMAT = {
