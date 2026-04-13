@@ -1,20 +1,26 @@
 # nodejs-audio-visualizer
 Audio visualizer generator for Node.js with simple configuration.  
-Supports PNG, JPG for images and MP3, WAV for audio.
+Supports PNG, JPG for images, MP4/MOV/AVI/MKV for background videos, and MP3, WAV for audio.
 
 ## Example
 ```javascript
 const renderAudioVisualizer = require('nodejs-audio-visualizer').renderAudioVisualizer;
 const config = {
   image: {
-    path: 'media/background.png' // Supports PNG and JPG images
+    path: 'media/background.png' // Supports PNG and JPG images. Use either 'image' or 'video', not both.
   },
+  // OR use a video as background:
+  // video: {
+  //   path: 'media/background.mp4', // Supports MP4, MOV, AVI, MKV. Loops automatically if shorter than audio.
+  //   autoEdit: true, // Optional. Detects scene cuts and advances between them on each beat so the background edits with the music; omit or false for one continuous play-through from the start.
+  // },
   audio: {
     path: 'media/audio.wav' // Supports MP3 and WAV audio
   },
   outVideo: {
     path: 'media/out.mp4',
     fps: 25, // Default value: 30
+    resolution: { width: 1920, height: 1080 }, // Optional. Output frame size in pixels. Omit to keep the background image or video at its native resolution; when set, video frames are scaled to this size and images are resized (center-cropped first if landscape/portrait does not match the target aspect).
     spectrum: { // Audio spectrum configuration (linear bar visualizer). Optional. If neither 'spectrum' nor 'polar' is specified, 'polar' is used by default.
       width: '30%', // 30% of background image width. Default value: 33%. Also you can use absolute values. For example, value 300 for 300 pixels width.
       height: '15%', // 15% of background image height. Default value: 160. Also you can use absolute values. For example, value 300 for 300 pixels height.

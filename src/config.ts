@@ -45,13 +45,22 @@ export const getAudioFilePath = (config: Config) =>
   path.resolve(config.audio.path);
 
 export const getBackgroundImagePath = (config: Config) =>
-  path.resolve(config.image.path);
+  config.image ? path.resolve(config.image.path) : undefined;
+
+export const getBackgroundVideoPath = (config: Config) =>
+  config.video ? path.resolve(config.video.path) : undefined;
+
+export const getAutoEditVideo = (config: Config) =>
+  config.video?.autoEdit === true;
 
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);
 
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
+
+export const getOutputResolution = (config: Config) =>
+  config.outVideo.resolution;
 
 export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 

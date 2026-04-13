@@ -459,7 +459,6 @@ export const createPolarVisualizerFrameGenerator = () => {
 
     const rgbSpectrumColor = (typeof color === 'string') ? hexToRgb(color) : color;
 
-    // Draw shadow/volume effect
     if (spectrumEffect === 'volume') {
       drawPolarSpectrum({
         imageDstBuffer,
@@ -474,7 +473,6 @@ export const createPolarVisualizerFrameGenerator = () => {
       });
     }
 
-    // Draw smooth/trail effect with previous frame
     if (spectrumEffect === 'smooth' && prevSpectrum) {
       drawPolarSpectrum({
         imageDstBuffer,
@@ -489,7 +487,6 @@ export const createPolarVisualizerFrameGenerator = () => {
       });
     }
 
-    // Draw main spectrum
     drawPolarSpectrum({
       imageDstBuffer,
       spectrum,
@@ -508,10 +505,36 @@ export const createPolarVisualizerFrameGenerator = () => {
   };
 };
 
-export const convertToBmp = async (filePath: string) =>
+export const convertToBmp = async (filePath: string, targetWidth?: number, targetHeight?: number) =>
   new Promise<Buffer>(async (resolve, reject) => {
     try {
       const image = await Jimp.read(filePath);
+      if (targetWidth && targetHeight) {
+        const sw = image.getWidth();
+        const sh = image.getHeight();
+        const isOrientationMismatch =
+          (sw > sh && targetWidth < targetHeight) ||
+          (sw < sh && targetWidth > targetHeight);
+
+        if (isOrientationMismatch) {
+          const targetAspect = targetWidth / targetHeight;
+          let cropW: number, cropH: number, cropX: number, cropY: number;
+          if (sw / sh > targetAspect) {
+            cropW = Math.round(sh * targetAspect);
+            cropH = sh;
+            cropX = Math.round((sw - cropW) / 2);
+            cropY = 0;
+          } else {
+            cropW = sw;
+            cropH = Math.round(sw / targetAspect);
+            cropX = 0;
+            cropY = Math.round((sh - cropH) / 2);
+          }
+          image.crop(cropX, cropY, cropW, cropH);
+        }
+
+        image.resize(targetWidth, targetHeight);
+      }
       image.getBuffer("image/bmp", (err, value) => {
         if (err) {
           reject(err);
@@ -545,6 +568,25 @@ export const getImageColor = (image: BmpDecoder): Color => {
     red: ~~(redSum / pixelsCount),
     green: ~~(greenSum / pixelsCount),
     blue: ~~(blueSum / pixelsCount)
+  };
+};
+
+export const getVideoFrameColor = (bgrBuffer: Buffer, width: number, height: number): Color => {
+  let blueSum = 0;
+  let greenSum = 0;
+  let redSum = 0;
+  const pixelsCount = width * height;
+
+  for (let i = 0; i < bgrBuffer.length; i += 3) {
+    blueSum += bgrBuffer[i];
+    greenSum += bgrBuffer[i + 1];
+    redSum += bgrBuffer[i + 2];
+  }
+
+  return {
+    red: ~~(redSum / pixelsCount),
+    green: ~~(greenSum / pixelsCount),
+    blue: ~~(blueSum / pixelsCount),
   };
 };
 
