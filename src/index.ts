@@ -300,6 +300,35 @@ async function prepareBackgroundForRender(params: {
   };
 }
 
+async function resolveBackgroundFrameBuffer(params: {
+  frameIndex: number;
+  useVideoBackground: boolean;
+  videoFrameReader?: ReturnType<typeof spawnVideoFrameReader>;
+  videoFrameSize: number;
+  encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
+  staticBackgroundBuffer: EncodedBmp;
+}): Promise<EncodedBmp> {
+  const {
+    frameIndex,
+    useVideoBackground,
+    videoFrameReader,
+    videoFrameSize,
+    encodeVideoFrame,
+    staticBackgroundBuffer,
+  } = params;
+
+  if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
+    if (frameIndex === 0) {
+      return staticBackgroundBuffer;
+    }
+    const videoFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
+    return videoFrame
+      ? encodeVideoFrame(videoFrame)
+      : staticBackgroundBuffer;
+  }
+  return staticBackgroundBuffer;
+}
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
   new Promise<number>(async (resolve) => {
     if (config.outVideo.spectrum && config.outVideo.polar) {
@@ -373,19 +402,14 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     for (let i = 0; i < framesCount; i++) {
       const spectrum = preprocessed.spectrums[i];
 
-      let backgroundImageBuffer: EncodedBmp;
-      if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
-        if (i === 0) {
-          backgroundImageBuffer = staticBackgroundBuffer!;
-        } else {
-          const videoFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
-          backgroundImageBuffer = videoFrame
-            ? encodeVideoFrame(videoFrame)
-            : staticBackgroundBuffer!;
-        }
-      } else {
-        backgroundImageBuffer = staticBackgroundBuffer!;
-      }
+      const backgroundImageBuffer = await resolveBackgroundFrameBuffer({
+        frameIndex: i,
+        useVideoBackground,
+        videoFrameReader,
+        videoFrameSize,
+        encodeVideoFrame,
+        staticBackgroundBuffer,
+      });
 
       const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
         backgroundImageBuffer,
