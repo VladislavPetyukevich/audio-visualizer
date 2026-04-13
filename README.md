@@ -53,12 +53,7 @@ const onProgress = (progressPercent: number) => { // not necessary callback
   console.log(`progress: ${progressPercent} %`);
 };
 
-let counter = 0;
 const shouldStop = () => { // not necessary callback
-  if (counter > 5) {
-    return true;
-  }
-  counter++;
   return false;
 };
 
