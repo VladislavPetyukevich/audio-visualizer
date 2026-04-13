@@ -50,6 +50,9 @@ export const getBackgroundImagePath = (config: Config) =>
 export const getBackgroundVideoPath = (config: Config) =>
   config.video ? path.resolve(config.video.path) : undefined;
 
+export const getAutoEditVideo = (config: Config) =>
+  config.video?.autoEdit === true;
+
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);
 

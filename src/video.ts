@@ -252,6 +252,16 @@ export const buildBeatSyncedSegments = (
   sceneChanges: SceneChange[],
   videoDuration: number,
 ): VideoSegment[] => {
+  if (sceneChanges.length === 0) {
+    return [
+      {
+        outputStartFrame: 0,
+        videoSeekSeconds: 0,
+        frameCount: totalFrames,
+      },
+    ];
+  }
+
   const consolidated = mergeSmallScenes(sceneChanges, videoDuration);
   let seekPositions: number[];
   if (consolidated.length >= 2) {

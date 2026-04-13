@@ -27,10 +27,11 @@ import {
   getPolarEffect,
   getPolarColor,
   getPolarOpacityParsed,
+  getAutoEditVideo,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
-import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, SceneChange, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
+import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { BmpDecoder } from 'bmp-js';
 import { createBeatDetector, BeatInfo } from './beats';
@@ -53,6 +54,7 @@ export interface Config {
   };
   video?: {
     path: string;
+    autoEdit?: boolean;
   };
   outVideo: {
     path: string;
@@ -206,6 +208,7 @@ async function prepareBackgroundForRender(params: {
   framesCount: number;
   outputResolution: ReturnType<typeof getOutputResolution>;
   fps: number;
+  autoEditVideo: boolean;
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -224,13 +227,14 @@ async function prepareBackgroundForRender(params: {
     framesCount,
     outputResolution,
     fps,
+    autoEditVideo,
   } = params;
 
   if (useVideoBackground && backgroundVideoPath) {
-    const [sceneChanges, videoInfo] = await Promise.all([
-      detectSceneChanges(backgroundVideoPath),
-      getVideoInfo(backgroundVideoPath),
-    ]);
+    const videoInfo = await getVideoInfo(backgroundVideoPath);
+    const sceneChanges = autoEditVideo
+      ? await detectSceneChanges(backgroundVideoPath)
+      : [];
     const backgroundWidth = outputResolution?.width ?? videoInfo.width;
     const backgroundHeight = outputResolution?.height ?? videoInfo.height;
 
@@ -383,6 +387,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       framesCount,
       outputResolution,
       fps: FPS,
+      autoEditVideo: getAutoEditVideo(config),
     });
 
     const createVisualizerFrame = createVisualizerFrameGenerator(
