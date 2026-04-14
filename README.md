@@ -6,10 +6,10 @@ Supports PNG, JPG for images, MP4/MOV/AVI/MKV for background videos, and MP3, WA
 ```javascript
 const renderAudioVisualizer = require('nodejs-audio-visualizer').renderAudioVisualizer;
 const config = {
-  image: {
+  image: { // Optional.
     path: 'media/background.png' // Supports PNG and JPG images. Use either 'image' or 'video', not both.
   },
-  // OR use a video as background:
+  // OR use a video as background (optional):
   // video: {
   //   path: 'media/background.mp4', // Supports MP4, MOV, AVI, MKV. Loops automatically if shorter than audio.
   //   autoEdit: true, // Optional. Detects scene cuts and advances between them on each beat so the background edits with the music; omit or false for one continuous play-through from the start.
