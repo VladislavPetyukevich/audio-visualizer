@@ -166,7 +166,7 @@ interface PreProcessedAudio {
   beatFrameIndices: number[];
 }
 
-const PREPROCESS_YIELD_EVERY = 256;
+const PREPROCESS_YIELD_EVERY = 1;
 
 const preProcessAudio = async (
   audioBuffer: Buffer,
