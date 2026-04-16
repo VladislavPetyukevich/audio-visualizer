@@ -166,12 +166,14 @@ interface PreProcessedAudio {
   beatFrameIndices: number[];
 }
 
-const preProcessAudio = (
+const PREPROCESS_YIELD_EVERY = 256;
+
+const preProcessAudio = async (
   audioBuffer: Buffer,
   sampleRate: number,
   fps: number,
   framesCount: number,
-): PreProcessedAudio => {
+): Promise<PreProcessedAudio> => {
   const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
   const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
   const skipFramesCount = fps < 45 ? 1 : 2;
@@ -193,6 +195,10 @@ const preProcessAudio = (
     spectrums.push(spectrum);
     if (beat.isBeat) {
       beatFrameIndices.push(i);
+    }
+
+    if ((i + 1) % PREPROCESS_YIELD_EVERY === 0) {
+      await new Promise<void>(resolve => setImmediate(resolve));
     }
   }
 
@@ -367,7 +373,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const framesCount = Math.trunc(audioDuration * FPS);
     const outputResolution = getOutputResolution(config);
 
-    const preprocessed = preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
+    if (onProgress) {
+      onProgress(0);
+    }
+    const preprocessed = await preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
 
     const {
       backgroundWidth,
