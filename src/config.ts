@@ -44,6 +44,9 @@ export const checkIsPercentValue = (value: string) =>
 export const getAudioFilePath = (config: Config) =>
   path.resolve(config.audio.path);
 
+export const getAudioAutoHighlight = (config: Config) =>
+  config.audio.autoHighlight === true;
+
 export const getBackgroundImagePath = (config: Config) =>
   config.image ? path.resolve(config.image.path) : undefined;
 

@@ -15,7 +15,8 @@ const config = {
   //   autoEdit: true, // Optional. Detects scene cuts and advances between them on each beat so the background edits with the music; omit or false for one continuous play-through from the start.
   // },
   audio: {
-    path: 'media/audio.wav' // Supports MP3 and WAV audio
+    path: 'media/audio.wav', // Supports MP3 and WAV audio
+    autoHighlight: true,
   },
   outVideo: {
     path: 'media/out.mp4',

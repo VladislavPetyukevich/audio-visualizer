@@ -4,6 +4,7 @@ import { Config } from '../index';
 import {
   defaults,
   getAudioFilePath,
+  getAudioAutoHighlight,
   getBackgroundImagePath,
   getOutVideoPath,
   getFPS,
@@ -28,6 +29,18 @@ describe('config', function() {
     } as Config);
     const expected = path.resolve('test/path');
     expect(result).equal(expected);
+  });
+
+  it('getAudioAutoHighlight', function() {
+    expect(
+      getAudioAutoHighlight({ audio: { path: 'a.wav' } } as Config)
+    ).equal(false);
+    expect(
+      getAudioAutoHighlight({ audio: { path: 'a.wav', autoHighlight: false } } as Config)
+    ).equal(false);
+    expect(
+      getAudioAutoHighlight({ audio: { path: 'a.wav', autoHighlight: true } } as Config)
+    ).equal(true);
   });
 
   it('getBackgroundImagePath', function() {
