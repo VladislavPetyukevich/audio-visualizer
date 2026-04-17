@@ -5,6 +5,29 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 
+export interface AudioMuxSegment {
+  seekSeconds: number;
+  durationSeconds: number;
+}
+
+function buildAudioConcatFilter(segments: AudioMuxSegment[]): string {
+  for (const s of segments) {
+    if (!(s.durationSeconds > 0)) {
+      throw new Error('Each audio segment must have durationSeconds > 0 for ffmpeg concat.');
+    }
+  }
+  const chains: string[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    chains.push(
+      `[0:a]atrim=start=${s.seekSeconds}:duration=${s.durationSeconds},asetpts=PTS-STARTPTS[a${i}]`,
+    );
+  }
+  const concatInputs = segments.map((_, i) => `[a${i}]`).join('');
+  chains.push(`${concatInputs}concat=n=${segments.length}:v=0:a=1[aout]`);
+  return chains.join(';');
+}
+
 interface FfmpegVideoWriterConfig {
   audioFilename: string;
   videoFileName: string;
@@ -15,6 +38,8 @@ interface FfmpegVideoWriterConfig {
   /** When set with `audioDurationSeconds`, passed to ffmpeg before `-i` for muxed highlight. */
   audioSeekSeconds?: number;
   audioDurationSeconds?: number;
+  /** Multiple non-contiguous highlight segments (same file); uses filter_complex when length > 1. */
+  audioSegments?: AudioMuxSegment[];
 }
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
@@ -24,17 +49,36 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   const crf = config.crf || '23';
   const preset = config.preset || 'medium';
   const args: string[] = ['-y'];
-  if (config.audioSeekSeconds !== undefined && config.audioDurationSeconds !== undefined) {
-    args.push('-ss', String(config.audioSeekSeconds), '-t', String(config.audioDurationSeconds));
+  const segments = config.audioSegments;
+  const useMultiSegmentAudio = segments !== undefined && segments.length > 1;
+
+  if (useMultiSegmentAudio && segments) {
+    args.push('-i', config.audioFilename);
+    args.push('-filter_complex', buildAudioConcatFilter(segments));
+    args.push('-i', '-');
+    args.push('-map', '[aout]', '-map', '1:v');
+    args.push(
+      '-crf', crf,
+      '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
+      '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
+    );
+  } else {
+    const seek =
+      segments?.[0]?.seekSeconds ?? config.audioSeekSeconds;
+    const duration =
+      segments?.[0]?.durationSeconds ?? config.audioDurationSeconds;
+    if (seek !== undefined && duration !== undefined) {
+      args.push('-ss', String(seek), '-t', String(duration));
+    }
+    args.push(
+      '-i', config.audioFilename,
+      '-crf', crf,
+      '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
+      '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
+      '-r', `${config.fps}`,
+      '-i', '-'
+    );
   }
-  args.push(
-    '-i', config.audioFilename,
-    '-crf', crf,
-    '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
-    '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
-    '-r', `${config.fps}`,
-    '-i', '-'
-  );
   const ffmpeg = spawn(ffmpegPath, args);
   ffmpeg.stdin.pipe(process.stdout);
   if (config.onStderr) {

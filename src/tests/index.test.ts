@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { createSandbox } from 'sinon';
 import { renderAudioVisualizer, Config } from '../index';
+import path from 'path';
 import fs from 'fs';
 import { Writable, Readable } from 'stream';
 import { ChildProcessWithoutNullStreams } from 'child_process';
@@ -21,14 +22,19 @@ describe('index', function () {
     sandbox.stub(image, 'getImageColor').returns({ red: 0, green: 0, blue: 0 });
 
     let exitCallback: Function = () => { };
+    const stdin = new Writable({
+      write(_chunk: Buffer, _enc: string, cb: (error?: Error | null) => void) {
+        exitCallback(EXIT_CODE);
+        cb();
+      },
+    });
     let childProcessStream: unknown = {
-      stdin: new Writable(),
+      stdin,
       stderr: new Readable(),
       on: function (_: string, callback: Function) {
         exitCallback = callback;
-      }
+      },
     };
-    (<ChildProcessWithoutNullStreams>childProcessStream).stdin._write = () => exitCallback(EXIT_CODE);
     sandbox.stub(video, 'spawnFfmpegVideoWriter').returns(childProcessStream as ChildProcessWithoutNullStreams);
   });
 
@@ -50,7 +56,8 @@ describe('index', function () {
       }
     };
 
-    const exitCode = await renderAudioVisualizer(config);
+    const { exitCode, outputVideoFiles } = await renderAudioVisualizer(config);
     expect(exitCode).equal(EXIT_CODE);
+    expect(outputVideoFiles).deep.equal([path.resolve('outVideoPath')]);
   });
 });

@@ -5,6 +5,7 @@ import {
   defaults,
   getAudioFilePath,
   getAudioAutoHighlight,
+  getAudioAutoHighlightCount,
   getBackgroundImagePath,
   getOutVideoPath,
   getFPS,
@@ -41,6 +42,24 @@ describe('config', function() {
     expect(
       getAudioAutoHighlight({ audio: { path: 'a.wav', autoHighlight: true } } as Config)
     ).equal(true);
+  });
+
+  it('getAudioAutoHighlightCount', function() {
+    expect(
+      getAudioAutoHighlightCount({ audio: { path: 'a.wav' } } as Config)
+    ).equal(1);
+    expect(
+      getAudioAutoHighlightCount({ audio: { path: 'a.wav', autoHighlightCount: 3 } } as Config)
+    ).equal(3);
+    expect(
+      getAudioAutoHighlightCount.bind(undefined, { audio: { path: 'a.wav', autoHighlightCount: 0 } } as Config)
+    ).to.throw('Invalid audio.autoHighlightCount');
+    expect(
+      getAudioAutoHighlightCount.bind(undefined, { audio: { path: 'a.wav', autoHighlightCount: 1.5 } } as Config)
+    ).to.throw('Invalid audio.autoHighlightCount');
+    expect(
+      getAudioAutoHighlightCount.bind(undefined, { audio: { path: 'a.wav', autoHighlightCount: NaN } } as Config)
+    ).to.throw('Invalid audio.autoHighlightCount');
   });
 
   it('getBackgroundImagePath', function() {

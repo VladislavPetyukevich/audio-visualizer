@@ -17,6 +17,7 @@ const config = {
   audio: {
     path: 'media/audio.wav', // Supports MP3 and WAV audio
     autoHighlight: true,
+    autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping 15s windows with the highest summed spectral energy to pick (default 1; must be a whole number ≥ 1). More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
   },
   outVideo: {
     path: 'media/out.mp4',
@@ -59,8 +60,9 @@ const shouldStop = () => { // not necessary callback
 };
 
 renderAudioVisualizer(config, onProgress, shouldStop)
-  .then((exitCode) => {
+  .then(({ exitCode, outputVideoFiles }) => {
     console.log(`exited with code: ${exitCode}`);
+    console.log(`written:`, outputVideoFiles);
   });
 ```
 

@@ -47,6 +47,24 @@ export const getAudioFilePath = (config: Config) =>
 export const getAudioAutoHighlight = (config: Config) =>
   config.audio.autoHighlight === true;
 
+export const getAudioAutoHighlightCount = (config: Config): number => {
+  const raw = config.audio.autoHighlightCount;
+  if (raw === undefined) {
+    return 1;
+  }
+  if (
+    typeof raw !== 'number' ||
+    !Number.isFinite(raw) ||
+    !Number.isInteger(raw) ||
+    raw < 1
+  ) {
+    throw new Error(
+      `Invalid audio.autoHighlightCount: expected a finite integer >= 1, got '${String(raw)}'.`,
+    );
+  }
+  return raw;
+};
+
 export const getBackgroundImagePath = (config: Config) =>
   config.image ? path.resolve(config.image.path) : undefined;
 

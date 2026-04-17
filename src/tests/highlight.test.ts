@@ -62,6 +62,13 @@ describe('computeHighlightSlice', function() {
 
     expect(result.audioDurationSeconds).equal(highlightFrames / fps);
 
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: expectedStart / fps, durationSeconds: highlightFrames / fps },
+    ]);
+
+    expect(result.runs).have.length(1);
+    expect(result.runs[0].highlightFrames).equal(highlightFrames);
+
   });
 
 
@@ -93,6 +100,12 @@ describe('computeHighlightSlice', function() {
     expect(result.highlightFrames).equal(highlightFrames);
 
     expect(result.spectrums.length).equal(highlightFrames);
+
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: maxStart / fps, durationSeconds: highlightFrames / fps },
+    ]);
+
+    expect(result.runs).have.length(1);
 
   });
 
@@ -128,6 +141,13 @@ describe('computeHighlightSlice', function() {
 
     expect(result.audioDurationSeconds).equal(totalFrames / fps);
 
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: 0, durationSeconds: totalFrames / fps },
+    ]);
+
+    expect(result.runs).have.length(1);
+    expect(result.runs[0].spectrums.length).equal(totalFrames);
+
   });
 
 
@@ -159,6 +179,12 @@ describe('computeHighlightSlice', function() {
     expect(result.startFrame).equal(300);
 
     expect(result.beatFrameIndices).deep.equal([0, 100]);
+
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: 300 / fps, durationSeconds: highlightFrames / fps },
+    ]);
+
+    expect(result.runs).have.length(1);
 
   });
 
@@ -194,6 +220,12 @@ describe('computeHighlightSlice', function() {
 
     expect(result.highlightFrames).equal(highlightFrames);
 
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: 10 / fps, durationSeconds: highlightFrames / fps },
+    ]);
+
+    expect(result.runs).have.length(1);
+
   });
 
 
@@ -208,6 +240,57 @@ describe('computeHighlightSlice', function() {
 
     expect(result.beatFrameIndices).deep.equal([]);
 
+    expect(result.audioSegments).deep.equal([]);
+
+    expect(result.runs).deep.equal([]);
+
+  });
+
+  it('concatenates two non-overlapping highlights chronologically with segmentCount 2', async function() {
+    const fps = 30;
+    const totalFrames = 1000;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
+    const loudA = 10;
+    const loudB = 5;
+    const spectrumsA = spectrumsWithEnergyInRange(totalFrames, 0, 450, loudA);
+    const spectrumsB = spectrumsWithEnergyInRange(totalFrames, 500, 950, loudB);
+    const spectrums = spectrumsA.map((row, i) => {
+      const b = spectrumsB[i];
+      const v = (row[0] || 0) + (b[0] || 0);
+      return v > 0 ? [v] : [0];
+    });
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [
+      { frameIndex: 50, intensity: 1 },
+      { frameIndex: 550, intensity: 1 },
+    ], 2);
+
+    expect(result.highlightFrames).equal(highlightFrames * 2);
+    expect(result.spectrums.length).equal(highlightFrames * 2);
+    expect(result.startFrame).equal(0);
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: 0, durationSeconds: highlightFrames / fps },
+      { seekSeconds: 500 / fps, durationSeconds: highlightFrames / fps },
+    ]);
+    expect(result.beatFrameIndices).deep.equal([50, 500]);
+    expect(result.runs).have.length(2);
+    expect(result.runs[0].startFrame).equal(0);
+    expect(result.runs[1].startFrame).equal(500);
+    expect(result.runs[0].spectrums.length).equal(highlightFrames);
+    expect(result.runs[1].spectrums.length).equal(highlightFrames);
+  });
+
+  it('ignores extra segmentCount when only one full highlight window fits', async function() {
+    const fps = 30;
+    const totalFrames = 600;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 0, highlightFrames, 1);
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 3);
+
+    expect(result.highlightFrames).equal(highlightFrames);
+    expect(result.audioSegments).have.length(1);
+    expect(result.runs).have.length(1);
   });
 
 });
