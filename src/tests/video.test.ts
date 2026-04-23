@@ -34,7 +34,7 @@ describe('video', function () {
     expect(!!result).equal(true);
   });
 
-  it('spawnFfmpegVideoWriter uses filter_complex concat for multi-segment audio', function () {
+  it('spawnFfmpegVideoWriter uses -ss and -t for single audioSegment', function () {
     const childProcessReadableStream = new Readable();
     childProcessReadableStream._read = () => { };
     const childProcessWritableStream = new Writable();
@@ -54,20 +54,18 @@ describe('video', function () {
       audioFilename: 'audio.mp3',
       videoFileName: 'out.mp4',
       fps: 25,
-      audioSegments: [
-        { seekSeconds: 0, durationSeconds: 10 },
-        { seekSeconds: 30, durationSeconds: 10 },
-      ],
+      audioSegment: { seekSeconds: 12, durationSeconds: 15 },
     });
 
     spawnStub.resetBehavior();
     spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
 
-    expect(spawnArgs).to.include('-filter_complex');
-    const fcIdx = spawnArgs.indexOf('-filter_complex');
-    expect(fcIdx).greaterThan(-1);
-    expect(spawnArgs[fcIdx + 1]).to.include('concat');
-    expect(spawnArgs).to.include('[aout]');
-    expect(spawnArgs).to.include('-map');
+    expect(spawnArgs).to.not.include('-filter_complex');
+    const ssIdx = spawnArgs.indexOf('-ss');
+    expect(ssIdx).greaterThan(-1);
+    expect(spawnArgs[ssIdx + 1]).to.equal('12');
+    const tIdx = spawnArgs.indexOf('-t');
+    expect(tIdx).greaterThan(-1);
+    expect(spawnArgs[tIdx + 1]).to.equal('15');
   });
 });

@@ -428,7 +428,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       spectrums: number[][];
       beatIndices: number[];
       frameCount: number;
-      audioSegments: import('./highlight').HighlightAudioSegment[] | undefined;
+      audioSegment: import('./highlight').HighlightAudioSegment | undefined;
     };
 
     const passes: VideoRenderPass[] =
@@ -443,7 +443,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrums: run.spectrums,
             beatIndices: run.beatFrameIndices,
             frameCount: run.highlightFrames,
-            audioSegments: [run.audioSegment],
+            audioSegment: run.audioSegment,
           };
         })
       : [
@@ -452,11 +452,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrums: spectrumsForRender,
             beatIndices: beatIndicesForRender,
             frameCount: framesCountForRender,
-            audioSegments:
+            audioSegment:
               autoHighlight &&
               highlightSlice &&
               highlightSlice.audioSegments.length > 0
-                ? highlightSlice.audioSegments
+                ? highlightSlice.audioSegments[0]
                 : undefined,
           },
         ];
@@ -496,8 +496,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         audioFilename: audioFilePath,
         videoFileName: pass.outPath,
         fps: FPS,
-        ...(pass.audioSegments &&
-          pass.audioSegments.length > 0 && { audioSegments: pass.audioSegments }),
+        ...(pass.audioSegment && { audioSegment: pass.audioSegment }),
         ...(!!onProgress && {
           onStderr: getProgress((currentFrame: number) => {
             const g = progressFrameBase + currentFrame;
