@@ -5,6 +5,11 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 
+export interface AudioMuxSegment {
+  seekSeconds: number;
+  durationSeconds: number;
+}
+
 interface FfmpegVideoWriterConfig {
   audioFilename: string;
   videoFileName: string;
@@ -12,6 +17,11 @@ interface FfmpegVideoWriterConfig {
   crf?: string;
   preset?: string;
   onStderr?: (data: any) => any;
+  /** When set with `audioDurationSeconds`, passed to ffmpeg before `-i` for muxed highlight. */
+  audioSeekSeconds?: number;
+  audioDurationSeconds?: number;
+  /** One contiguous trim of the same audio file (muxed highlight). */
+  audioSegment?: AudioMuxSegment;
 }
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
@@ -20,15 +30,22 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   }
   const crf = config.crf || '23';
   const preset = config.preset || 'medium';
-  const args = [
-    '-y',
+  const args: string[] = ['-y'];
+  const seek =
+    config.audioSegment?.seekSeconds ?? config.audioSeekSeconds;
+  const duration =
+    config.audioSegment?.durationSeconds ?? config.audioDurationSeconds;
+  if (seek !== undefined && duration !== undefined) {
+    args.push('-ss', String(seek), '-t', String(duration));
+  }
+  args.push(
     '-i', config.audioFilename,
     '-crf', crf,
     '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
     '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
     '-r', `${config.fps}`,
     '-i', '-'
-  ];
+  );
   const ffmpeg = spawn(ffmpegPath, args);
   ffmpeg.stdin.pipe(process.stdout);
   if (config.onStderr) {

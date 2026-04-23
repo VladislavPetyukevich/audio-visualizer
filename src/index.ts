@@ -1,3 +1,4 @@
+import path from 'path';
 import {
   getAudioFilePath,
   getBackgroundImagePath,
@@ -28,13 +29,18 @@ import {
   getPolarColor,
   getPolarOpacityParsed,
   getAutoEditVideo,
+  getAudioAutoHighlight,
+  getAudioAutoHighlightCount,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
-import { spawnFfmpegVideoWriter, getProgress, calculateProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
+import { spawnFfmpegVideoWriter, getProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { createBeatDetector } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
+import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
+import { waitForEventLoop } from './waitForEventLoop';
+export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun } from './highlight';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -46,7 +52,10 @@ const PROCESSING_BUFFER_SIZE = Math.pow(2, 12);
 
 export interface Config {
   audio: {
-    path: string
+    path: string;
+    autoHighlight?: boolean;
+    /** When `autoHighlight` is true, number of non-overlapping 15s windows to stitch (default 1). */
+    autoHighlightCount?: number;
   };
   image?: {
     path: string;
@@ -164,6 +173,7 @@ const createVisualizerFrameGenerator = (
 interface PreProcessedAudio {
   spectrums: number[][];
   beatFrameIndices: number[];
+  beatEvents: { frameIndex: number; intensity: number }[];
 }
 
 const PREPROCESS_YIELD_EVERY = 1;
@@ -182,6 +192,7 @@ const preProcessAudio = async (
 
   const spectrums: number[][] = [];
   const beatFrameIndices: number[] = [];
+  const beatEvents: { frameIndex: number; intensity: number }[] = [];
 
   for (let i = 0; i < framesCount; i++) {
     const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
@@ -195,14 +206,13 @@ const preProcessAudio = async (
     spectrums.push(spectrum);
     if (beat.isBeat) {
       beatFrameIndices.push(i);
+      beatEvents.push({ frameIndex: i, intensity: beat.intensity });
     }
 
-    if ((i + 1) % PREPROCESS_YIELD_EVERY === 0) {
-      await new Promise<void>(resolve => setImmediate(resolve));
-    }
+    await waitForEventLoop();
   }
 
-  return { spectrums, beatFrameIndices };
+  return { spectrums, beatFrameIndices, beatEvents };
 };
 
 async function prepareBackgroundForRender(params: {
@@ -338,8 +348,14 @@ async function resolveBackgroundFrameBuffer(params: {
   return staticBackgroundBuffer;
 }
 
+export interface RenderAudioVisualizerResult {
+  exitCode: number;
+  /** Absolute paths of video files written successfully (exit code 0, full pass, no early stop). */
+  outputVideoFiles: string[];
+}
+
 export const renderAudioVisualizer = (config: Config, onProgress?: (progress: number) => any, shouldStop?: () => boolean) =>
-  new Promise<number>(async (resolve) => {
+  new Promise<RenderAudioVisualizerResult>(async (resolve) => {
     if (config.outVideo.spectrum && config.outVideo.polar) {
       throw new Error('Cannot use both "spectrum" and "polar" options. Please specify only one visualizer type.');
     }
@@ -378,74 +394,183 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     }
     const preprocessed = await preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
 
-    const {
-      backgroundWidth,
-      backgroundHeight,
-      defaultColor,
-      staticBackgroundBuffer,
-      videoFrameReader,
-      videoFrameSize,
-      encodeVideoFrame,
-      concatFilePath,
-    } = await prepareBackgroundForRender({
-      useVideoBackground,
-      backgroundVideoPath,
-      backgroundImagePath,
-      beatFrameIndices: preprocessed.beatFrameIndices,
-      framesCount,
-      outputResolution,
-      fps: FPS,
-      autoEditVideo: getAutoEditVideo(config),
-    });
+    const autoHighlight = getAudioAutoHighlight(config);
+    let spectrumsForRender = preprocessed.spectrums;
+    let beatIndicesForRender = preprocessed.beatFrameIndices;
+    let framesCountForRender = framesCount;
+    type HighlightSliceResult = ReturnType<typeof computeHighlightSlice> extends Promise<
+      infer R
+    >
+      ? R
+      : never;
+    let highlightSlice: HighlightSliceResult | undefined;
 
-    const createVisualizerFrame = createVisualizerFrameGenerator(
-      config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
-    );
+    if (autoHighlight) {
+      highlightSlice = await computeHighlightSlice(
+        FPS,
+        framesCount,
+        preprocessed.spectrums,
+        preprocessed.beatEvents,
+        getAudioAutoHighlightCount(config),
+      );
+      spectrumsForRender = highlightSlice.spectrums;
+      beatIndicesForRender = highlightSlice.beatFrameIndices;
+      framesCountForRender = highlightSlice.highlightFrames;
+    }
 
-    const ffmpegVideoWriter = spawnFfmpegVideoWriter({
-      audioFilename: audioFilePath,
-      videoFileName: outVideoPath,
-      fps: FPS,
-      ...(!!onProgress && { onStderr: getProgress(calculateProgress(framesCount + 1, onProgress)) }),
-      ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
-      ...(ffmpeg_preset && { preset: ffmpeg_preset }),
-    });
-    ffmpegVideoWriter.on('exit', (code: number) => resolve(code));
+    const separateHighlightFiles =
+      autoHighlight &&
+      highlightSlice &&
+      highlightSlice.runs.length > 1;
 
-    for (let i = 0; i < framesCount; i++) {
-      const spectrum = preprocessed.spectrums[i];
+    type VideoRenderPass = {
+      outPath: string;
+      spectrums: number[][];
+      beatIndices: number[];
+      frameCount: number;
+      audioSegment: import('./highlight').HighlightAudioSegment | undefined;
+    };
 
-      const backgroundImageBuffer = await resolveBackgroundFrameBuffer({
-        frameIndex: i,
-        useVideoBackground,
+    const passes: VideoRenderPass[] =
+      separateHighlightFiles && highlightSlice
+      ? highlightSlice.runs.map((run, i) => {
+          const dir = path.dirname(outVideoPath);
+          const ext = path.extname(outVideoPath);
+          const base = path.basename(outVideoPath, ext);
+          const numberedPath = path.resolve(dir, `${base}-${i + 1}${ext}`);
+          return {
+            outPath: numberedPath,
+            spectrums: run.spectrums,
+            beatIndices: run.beatFrameIndices,
+            frameCount: run.highlightFrames,
+            audioSegment: run.audioSegment,
+          };
+        })
+      : [
+          {
+            outPath: outVideoPath,
+            spectrums: spectrumsForRender,
+            beatIndices: beatIndicesForRender,
+            frameCount: framesCountForRender,
+            audioSegment:
+              autoHighlight &&
+              highlightSlice &&
+              highlightSlice.audioSegments.length > 0
+                ? highlightSlice.audioSegments[0]
+                : undefined,
+          },
+        ];
+
+    const progressDenominator =
+      passes.reduce((s, p) => s + p.frameCount, 0) + passes.length;
+    let progressFrameBase = 0;
+    let lastExitCode = 0;
+    const outputVideoFiles: string[] = [];
+
+    passLoop: for (const pass of passes) {
+      const {
+        backgroundWidth,
+        backgroundHeight,
+        defaultColor,
+        staticBackgroundBuffer,
         videoFrameReader,
         videoFrameSize,
         encodeVideoFrame,
-        staticBackgroundBuffer,
+        concatFilePath,
+      } = await prepareBackgroundForRender({
+        useVideoBackground,
+        backgroundVideoPath,
+        backgroundImagePath,
+        beatFrameIndices: pass.beatIndices,
+        framesCount: pass.frameCount,
+        outputResolution,
+        fps: FPS,
+        autoEditVideo: getAutoEditVideo(config),
       });
 
-      const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
-        backgroundImageBuffer,
-        spectrum,
-      };
-      const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
-      const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
-      if (!isFrameProcessed) {
-        await waitDrain(ffmpegVideoWriter.stdin);
+      const createVisualizerFrame = createVisualizerFrameGenerator(
+        config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
+      );
+
+      const ffmpegVideoWriter = spawnFfmpegVideoWriter({
+        audioFilename: audioFilePath,
+        videoFileName: pass.outPath,
+        fps: FPS,
+        ...(pass.audioSegment && { audioSegment: pass.audioSegment }),
+        ...(!!onProgress && {
+          onStderr: getProgress((currentFrame: number) => {
+            const g = progressFrameBase + currentFrame;
+            onProgress(
+              +(Math.min(100, (g / progressDenominator) * 100)).toFixed(2),
+            );
+          }),
+        }),
+        ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
+        ...(ffmpeg_preset && { preset: ffmpeg_preset }),
+      });
+
+      const exitPromise = new Promise<number>(res => {
+        let settled = false;
+        ffmpegVideoWriter.on('exit', (code: number | null) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          res(code ?? 0);
+        });
+      });
+
+      let stoppedEarly = false;
+      for (let i = 0; i < pass.frameCount; i++) {
+        const spectrum = pass.spectrums[i];
+
+        const backgroundImageBuffer = await resolveBackgroundFrameBuffer({
+          frameIndex: i,
+          useVideoBackground,
+          videoFrameReader,
+          videoFrameSize,
+          encodeVideoFrame,
+          staticBackgroundBuffer,
+        });
+
+        const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
+          backgroundImageBuffer,
+          spectrum,
+        };
+        const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
+        const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
+        if (!isFrameProcessed) {
+          await waitDrain(ffmpegVideoWriter.stdin);
+        }
+        if (shouldStop && shouldStop()) {
+          stoppedEarly = true;
+          break;
+        }
+        if (frame_processing_delay) {
+          await sleep(frame_processing_delay);
+        }
+        await waitForEventLoop();
       }
-      if (shouldStop && shouldStop()) {
-        break;
+
+      if (videoFrameReader) {
+        videoFrameReader.kill();
       }
-      if (frame_processing_delay) {
-        await sleep(frame_processing_delay);
+      if (concatFilePath) {
+        cleanupConcatFile(concatFilePath);
+      }
+      ffmpegVideoWriter.stdin.end();
+
+      lastExitCode = await exitPromise;
+      progressFrameBase += pass.frameCount + 1;
+
+      if (lastExitCode === 0 && !stoppedEarly) {
+        outputVideoFiles.push(pass.outPath);
+      }
+
+      if (stoppedEarly || lastExitCode !== 0) {
+        break passLoop;
       }
     }
 
-    if (videoFrameReader) {
-      videoFrameReader.kill();
-    }
-    if (concatFilePath) {
-      cleanupConcatFile(concatFilePath);
-    }
-    ffmpegVideoWriter.stdin.end();
+    resolve({ exitCode: lastExitCode, outputVideoFiles });
   });
