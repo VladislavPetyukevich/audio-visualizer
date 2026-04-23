@@ -17,7 +17,7 @@ const config = {
   audio: {
     path: 'media/audio.wav', // Supports MP3 and WAV audio
     autoHighlight: true,
-    autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping 15s windows with the highest summed spectral energy to pick (default 1; must be a whole number ≥ 1). More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
+    autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping 15s windows with the highest summed spectral energy to aim for (default 1; must be a whole number ≥ 1). You may get fewer videos if the track is too short or does not have that many valid windows. More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
   },
   outVideo: {
     path: 'media/out.mp4',
