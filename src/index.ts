@@ -176,14 +176,21 @@ interface PreProcessedAudio {
   beatEvents: { frameIndex: number; intensity: number }[];
 }
 
-const PREPROCESS_YIELD_EVERY = 1;
+const PRE_PROCESS_PROGRESS_SHARE = 10;
 
 const preProcessAudio = async (
   audioBuffer: Buffer,
   sampleRate: number,
   fps: number,
   framesCount: number,
+  onPreProcessProgress?: (totalPercent: number) => void,
 ): Promise<PreProcessedAudio> => {
+  if (framesCount === 0) {
+    for (let t = 1; t <= PRE_PROCESS_PROGRESS_SHARE; t += 1) {
+      onPreProcessProgress?.(t);
+    }
+    return { spectrums: [], beatFrameIndices: [], beatEvents: [] };
+  }
   const audioDataStep = Math.trunc(audioBuffer.length / framesCount);
   const processingBuffer = new Float32Array(PROCESSING_BUFFER_SIZE).fill(0);
   const skipFramesCount = fps < 45 ? 1 : 2;
@@ -193,6 +200,7 @@ const preProcessAudio = async (
   const spectrums: number[][] = [];
   const beatFrameIndices: number[] = [];
   const beatEvents: { frameIndex: number; intensity: number }[] = [];
+  let nextPreProcessMilestone = 1;
 
   for (let i = 0; i < framesCount; i++) {
     const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
@@ -207,6 +215,16 @@ const preProcessAudio = async (
     if (beat.isBeat) {
       beatFrameIndices.push(i);
       beatEvents.push({ frameIndex: i, intensity: beat.intensity });
+    }
+
+    const p =
+      PRE_PROCESS_PROGRESS_SHARE * (i + 1) / framesCount;
+    while (
+      nextPreProcessMilestone <= PRE_PROCESS_PROGRESS_SHARE
+      && p >= nextPreProcessMilestone
+    ) {
+      onPreProcessProgress?.(nextPreProcessMilestone);
+      nextPreProcessMilestone += 1;
     }
 
     await waitForEventLoop();
@@ -392,7 +410,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     if (onProgress) {
       onProgress(0);
     }
-    const preprocessed = await preProcessAudio(audioBuffer, sampleRate, FPS, framesCount);
+    const preprocessed = await preProcessAudio(
+      audioBuffer,
+      sampleRate,
+      FPS,
+      framesCount,
+      onProgress,
+    );
 
     const autoHighlight = getAudioAutoHighlight(config);
     let spectrumsForRender = preprocessed.spectrums;
@@ -501,7 +525,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           onStderr: getProgress((currentFrame: number) => {
             const g = progressFrameBase + currentFrame;
             onProgress(
-              +(Math.min(100, (g / progressDenominator) * 100)).toFixed(2),
+              +(
+                Math.min(
+                  100,
+                  PRE_PROCESS_PROGRESS_SHARE
+                    + (90 * g) / progressDenominator,
+                )
+              ).toFixed(2),
             );
           }),
         }),
