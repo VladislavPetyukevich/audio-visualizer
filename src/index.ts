@@ -176,7 +176,7 @@ interface PreProcessedAudio {
   beatEvents: { frameIndex: number; intensity: number }[];
 }
 
-const PRE_PROCESS_PROGRESS_SHARE = 10;
+const PRE_PROCESS_PROGRESS_SHARE = 60;
 
 const preProcessAudio = async (
   audioBuffer: Buffer,
