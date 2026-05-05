@@ -34,7 +34,7 @@ import {
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
-import { spawnFfmpegVideoWriter, getProgress, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
+import { spawnFfmpegVideoWriter, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, spawnConcatVideoFrameReader, cleanupConcatFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { createBeatDetector } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
@@ -177,6 +177,8 @@ interface PreProcessedAudio {
 }
 
 const PRE_PROCESS_PROGRESS_SHARE = 60;
+const POST_AUDIO_PROGRESS_SHARE = 10;
+const RENDER_PROGRESS_SHARE = 30;
 
 const preProcessAudio = async (
   audioBuffer: Buffer,
@@ -407,16 +409,30 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const framesCount = Math.trunc(audioDuration * FPS);
     const outputResolution = getOutputResolution(config);
 
-    if (onProgress) {
-      onProgress(0);
-    }
+    let maxProgressReported = -1;
+    const reportProgress = (progress: number) => {
+      if (!onProgress) {
+        return;
+      }
+      const normalized = +Math.min(100, Math.max(0, progress)).toFixed(2);
+      if (normalized <= maxProgressReported) {
+        return;
+      }
+      maxProgressReported = normalized;
+      onProgress(normalized);
+    };
+    reportProgress(0);
+
     const preprocessed = await preProcessAudio(
       audioBuffer,
       sampleRate,
       FPS,
       framesCount,
-      onProgress,
+      (progress: number) => {
+        reportProgress(progress);
+      },
     );
+    reportProgress(PRE_PROCESS_PROGRESS_SHARE);
 
     const autoHighlight = getAudioAutoHighlight(config);
     let spectrumsForRender = preprocessed.spectrums;
@@ -430,6 +446,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     let highlightSlice: HighlightSliceResult | undefined;
 
     if (autoHighlight) {
+      reportProgress(PRE_PROCESS_PROGRESS_SHARE + 1);
       highlightSlice = await computeHighlightSlice(
         FPS,
         framesCount,
@@ -440,6 +457,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;
       framesCountForRender = highlightSlice.highlightFrames;
+      reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
+    } else {
+      reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
     }
 
     const separateHighlightFiles =
@@ -485,9 +505,18 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           },
         ];
 
-    const progressDenominator =
-      passes.reduce((s, p) => s + p.frameCount, 0) + passes.length;
-    let progressFrameBase = 0;
+    const totalPassFrames =
+      passes.reduce((sum, pass) => sum + pass.frameCount, 0);
+    const totalRenderMilestones = totalPassFrames + (passes.length * 2);
+    let renderMilestonesCompleted = 0;
+    const reportRenderProgress = (milestoneIncrement = 1) => {
+      renderMilestonesCompleted += milestoneIncrement;
+      reportProgress(
+        PRE_PROCESS_PROGRESS_SHARE
+          + POST_AUDIO_PROGRESS_SHARE
+          + (RENDER_PROGRESS_SHARE * renderMilestonesCompleted / Math.max(1, totalRenderMilestones)),
+      );
+    };
     let lastExitCode = 0;
     const outputVideoFiles: string[] = [];
 
@@ -511,6 +540,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         fps: FPS,
         autoEditVideo: getAutoEditVideo(config),
       });
+      reportRenderProgress();
 
       const createVisualizerFrame = createVisualizerFrameGenerator(
         config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
@@ -521,20 +551,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         videoFileName: pass.outPath,
         fps: FPS,
         ...(pass.audioSegment && { audioSegment: pass.audioSegment }),
-        ...(!!onProgress && {
-          onStderr: getProgress((currentFrame: number) => {
-            const g = progressFrameBase + currentFrame;
-            onProgress(
-              +(
-                Math.min(
-                  100,
-                  PRE_PROCESS_PROGRESS_SHARE
-                    + (90 * g) / progressDenominator,
-                )
-              ).toFixed(2),
-            );
-          }),
-        }),
         ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
         ...(ffmpeg_preset && { preset: ffmpeg_preset }),
       });
@@ -584,6 +600,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           await sleep(frame_processing_delay);
         }
         await waitForEventLoop();
+        reportRenderProgress();
       }
 
       if (videoFrameReader) {
@@ -595,7 +612,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       ffmpegVideoWriter.stdin.end();
 
       lastExitCode = await exitPromise;
-      progressFrameBase += pass.frameCount + 1;
+      reportRenderProgress();
 
       if (lastExitCode === 0 && !stoppedEarly) {
         outputVideoFiles.push(pass.outPath);
@@ -604,6 +621,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       if (stoppedEarly || lastExitCode !== 0) {
         break passLoop;
       }
+    }
+
+    if (lastExitCode === 0 && outputVideoFiles.length === passes.length) {
+      reportProgress(100);
     }
 
     resolve({ exitCode: lastExitCode, outputVideoFiles });
