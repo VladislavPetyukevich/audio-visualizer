@@ -570,7 +570,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
         const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
         if (!isFrameProcessed) {
-          await waitDrain(ffmpegVideoWriter.stdin);
+          const isDrained = await waitDrain(ffmpegVideoWriter.stdin, ffmpegVideoWriter);
+          if (!isDrained) {
+            stoppedEarly = true;
+            break;
+          }
         }
         if (shouldStop && shouldStop()) {
           stoppedEarly = true;

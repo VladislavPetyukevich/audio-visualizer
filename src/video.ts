@@ -47,7 +47,6 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
     '-i', '-'
   );
   const ffmpeg = spawn(ffmpegPath, args);
-  ffmpeg.stdin.pipe(process.stdout);
   if (config.onStderr) {
     ffmpeg.stderr.on('data', config.onStderr);
   }
@@ -237,8 +236,37 @@ export const calculateProgress = (framesCount: number, callback: (progress: numb
       +(currentFrame / framesCount * 100).toFixed(2)
     );
 
-export const waitDrain = (stream: Writable) =>
-  new Promise<void>(resolve => stream.once('drain', resolve));
+export const waitDrain = (
+  stream: Writable,
+  processStream?: {
+    once: (eventName: string, listener: (...args: any[]) => void) => any;
+    removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
+  },
+) =>
+  new Promise<boolean>(resolve => {
+    const cleanup = () => {
+      stream.removeListener('drain', onDrain);
+      stream.removeListener('error', onErrorOrClose);
+      stream.removeListener('close', onErrorOrClose);
+      processStream?.removeListener('error', onErrorOrClose);
+      processStream?.removeListener('exit', onErrorOrClose);
+      processStream?.removeListener('close', onErrorOrClose);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve(true);
+    };
+    const onErrorOrClose = () => {
+      cleanup();
+      resolve(false);
+    };
+    stream.once('drain', onDrain);
+    stream.once('error', onErrorOrClose);
+    stream.once('close', onErrorOrClose);
+    processStream?.once('error', onErrorOrClose);
+    processStream?.once('exit', onErrorOrClose);
+    processStream?.once('close', onErrorOrClose);
+  });
 
 export interface VideoSegment {
   outputStartFrame: number;
