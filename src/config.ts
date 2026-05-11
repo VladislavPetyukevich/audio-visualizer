@@ -77,6 +77,86 @@ export const getAutoEditVideo = (config: Config) =>
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);
 
+export type SubtitleAlignment = 'top' | 'middle' | 'bottom';
+
+export type SubtitleRenderSpec = {
+  source: { kind: 'file'; path: string } | { kind: 'inline'; text: string };
+  alignment: SubtitleAlignment;
+};
+
+export const subtitleAlignmentToAss = (alignment: SubtitleAlignment): number => {
+  switch (alignment) {
+    case 'top':
+      return 6;
+    case 'middle':
+      return 10;
+    case 'bottom':
+      return 2;
+  }
+};
+
+const parseSubtitleAlignment = (raw: unknown): SubtitleAlignment => {
+  if (raw === undefined) {
+    return 'bottom';
+  }
+  if (raw === 'top' || raw === 'middle' || raw === 'bottom') {
+    return raw;
+  }
+  throw new Error(
+    `Invalid outVideo.subtitles.alignment: expected 'top', 'middle', or 'bottom', got '${String(raw)}'.`,
+  );
+};
+
+export const getSubtitleRenderSpec = (config: Config): SubtitleRenderSpec | undefined => {
+  const subtitles = config.outVideo.subtitles;
+  if (subtitles === undefined || subtitles === null) {
+    return undefined;
+  }
+  if (typeof subtitles === 'string') {
+    if (subtitles.trim().length === 0) {
+      throw new Error(
+        `Invalid outVideo.subtitles: expected non-empty string content, got '${String(subtitles)}'.`,
+      );
+    }
+    return {
+      source: { kind: 'inline', text: subtitles },
+      alignment: 'bottom',
+    };
+  }
+  if (typeof subtitles !== 'object' || Array.isArray(subtitles)) {
+    throw new Error(
+      `Invalid outVideo.subtitles: expected string or object, got '${String(subtitles)}'.`,
+    );
+  }
+  const obj = subtitles as {
+    path?: string;
+    rawContent?: string;
+    alignment?: unknown;
+  };
+  const alignment = parseSubtitleAlignment(obj.alignment);
+  const pathRaw = obj.path !== undefined ? String(obj.path).trim() : '';
+  const rawContent =
+    obj.rawContent !== undefined ? String(obj.rawContent).trim() : '';
+  if (pathRaw.length > 0 && rawContent.length > 0) {
+    throw new Error(
+      'Invalid outVideo.subtitles: specify only one of "path" or "rawContent", not both.',
+    );
+  }
+  if (pathRaw.length === 0 && rawContent.length === 0) {
+    return undefined;
+  }
+  if (pathRaw.length > 0) {
+    return {
+      source: { kind: 'file', path: path.resolve(pathRaw) },
+      alignment,
+    };
+  }
+  return {
+    source: { kind: 'inline', text: rawContent },
+    alignment,
+  };
+};
+
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;
 

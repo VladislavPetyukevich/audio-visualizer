@@ -8,6 +8,8 @@ import {
   getAudioAutoHighlightCount,
   getBackgroundImagePath,
   getOutVideoPath,
+  getSubtitleRenderSpec,
+  subtitleAlignmentToAss,
   getFPS,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
@@ -76,6 +78,73 @@ describe('config', function() {
     } as Config);
     const expected = path.resolve('test/path');
     expect(result).equal(expected);
+  });
+
+  it('getSubtitleRenderSpec', function() {
+    expect(
+      getSubtitleRenderSpec({ outVideo: {} } as Config)
+    ).equal(undefined);
+
+    expect(
+      getSubtitleRenderSpec({
+        outVideo: { subtitles: '1\n00:00:00,000 --> 00:00:01,000\nTest' }
+      } as Config)
+    ).deep.equal({
+      source: { kind: 'inline', text: '1\n00:00:00,000 --> 00:00:01,000\nTest' },
+      alignment: 'bottom',
+    });
+
+    expect(
+      getSubtitleRenderSpec({
+        outVideo: {
+          subtitles: { rawContent: '1\n00:00:00,000 --> 00:00:01,000\nHi', alignment: 'top' }
+        }
+      } as Config)
+    ).deep.equal({
+      source: { kind: 'inline', text: '1\n00:00:00,000 --> 00:00:01,000\nHi' },
+      alignment: 'top',
+    });
+
+    expect(
+      getSubtitleRenderSpec({
+        outVideo: { subtitles: { path: 'media/sub.srt' } }
+      } as Config)
+    ).deep.equal({
+      source: { kind: 'file', path: path.resolve('media/sub.srt') },
+      alignment: 'bottom',
+    });
+
+    expect(
+      getSubtitleRenderSpec({ outVideo: { subtitles: {} } } as Config)
+    ).equal(undefined);
+
+    expect(
+      getSubtitleRenderSpec.bind(undefined, {
+        outVideo: { subtitles: '' }
+      } as unknown as Config)
+    ).to.throw('Invalid outVideo.subtitles: expected non-empty string content');
+
+    expect(
+      getSubtitleRenderSpec.bind(undefined, {
+        outVideo: {
+          subtitles: { path: 'a.lrc', rawContent: 'x' }
+        }
+      } as Config)
+    ).to.throw(
+      'Invalid outVideo.subtitles: specify only one of "path" or "rawContent", not both.',
+    );
+
+    expect(
+      getSubtitleRenderSpec.bind(undefined, {
+        outVideo: { subtitles: { alignment: 'center' as any } }
+      } as Config)
+    ).to.throw('Invalid outVideo.subtitles.alignment');
+  });
+
+  it('subtitleAlignmentToAss', function() {
+    expect(subtitleAlignmentToAss('bottom')).equal(2);
+    expect(subtitleAlignmentToAss('middle')).equal(10);
+    expect(subtitleAlignmentToAss('top')).equal(6);
   });
 
   it('getFPS', function() {
