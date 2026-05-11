@@ -12,6 +12,9 @@ export interface AudioMuxSegment {
 
 interface FfmpegVideoWriterConfig {
   audioFilename: string;
+  subtitleFilename?: string;
+  /** Vertical margin passed to FFmpeg `subtitles` `force_style` as `MarginV` (pixels). Default 50. */
+  subtitleMarginV?: number;
   videoFileName: string;
   fps: number;
   crf?: string;
@@ -23,6 +26,17 @@ interface FfmpegVideoWriterConfig {
   /** One contiguous trim of the same audio file (muxed highlight). */
   audioSegment?: AudioMuxSegment;
 }
+
+const escapeSubtitleFilterPath = (subtitlePath: string) =>
+  subtitlePath
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/,/g, '\\,')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]');
+
+const DEFAULT_SUBTITLE_MARGIN_V = 50;
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   if (!ffmpegPath) {
@@ -42,7 +56,21 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
     '-i', config.audioFilename,
     '-crf', crf,
     '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
-    '-c:v', 'libx264', '-r', `${config.fps}`, '-pix_fmt', 'yuv420p', '-preset', preset, config.videoFileName,
+    '-c:v', 'libx264',
+    '-r', `${config.fps}`,
+    '-pix_fmt', 'yuv420p',
+    '-preset', preset,
+  );
+  if (config.subtitleFilename) {
+    const subPath = escapeSubtitleFilterPath(config.subtitleFilename);
+    const marginV = config.subtitleMarginV ?? DEFAULT_SUBTITLE_MARGIN_V;
+    args.push(
+      '-vf',
+      `subtitles='${subPath}':force_style='MarginV=${marginV}'`,
+    );
+  }
+  args.push(
+    config.videoFileName,
     '-r', `${config.fps}`,
     '-i', '-'
   );
@@ -364,6 +392,12 @@ export const writeConcatFile = (
   return concatPath;
 };
 
+export const writeSubtitlesFile = (subtitles: string): string => {
+  const subtitlePath = joinPath(tmpdir(), `av-subtitles-${Date.now()}.srt`);
+  writeFileSync(subtitlePath, subtitles, 'utf-8');
+  return subtitlePath;
+};
+
 export const spawnConcatVideoFrameReader = (config: {
   concatFilePath: string;
   fps: number;
@@ -398,6 +432,8 @@ export const spawnConcatVideoFrameReader = (config: {
   return spawn(ffmpegPath, args);
 };
 
-export const cleanupConcatFile = (filePath: string) => {
+export const cleanupTempFile = (filePath: string) => {
   try { unlinkSync(filePath); } catch {}
 };
+
+export const cleanupConcatFile = cleanupTempFile;

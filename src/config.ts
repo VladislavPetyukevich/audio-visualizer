@@ -4,6 +4,7 @@ import { FREQUENCY_BANDS } from './dsp';
 
 export const defaults = {
   fps: 30,
+  subtitleMarginV: 50,
   spectrumWidth: '33%',
   spectrumHeight: 160,
   spectrumX: 'center',
@@ -76,6 +77,37 @@ export const getAutoEditVideo = (config: Config) =>
 
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);
+
+export const getSubtitleMarginV = (config: Config): number => {
+  const raw = config.outVideo.subtitleMarginV;
+  if (raw === undefined) {
+    return defaults.subtitleMarginV;
+  }
+  if (
+    typeof raw !== 'number' ||
+    !Number.isFinite(raw) ||
+    !Number.isInteger(raw) ||
+    raw < 0
+  ) {
+    throw new Error(
+      `Invalid outVideo.subtitleMarginV: expected a finite integer >= 0, got '${String(raw)}'.`,
+    );
+  }
+  return raw;
+};
+
+export const getSubtitles = (config: Config) => {
+  const subtitles = config.outVideo.subtitles;
+  if (subtitles === undefined) {
+    return undefined;
+  }
+  if (typeof subtitles !== 'string' || subtitles.trim().length === 0) {
+    throw new Error(
+      `Invalid outVideo.subtitles: expected non-empty string content, got '${String(subtitles)}'.`,
+    );
+  }
+  return subtitles;
+};
 
 export const getFPS = (config: Config) =>
   config.outVideo.fps || defaults.fps;

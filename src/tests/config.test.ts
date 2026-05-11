@@ -8,6 +8,8 @@ import {
   getAudioAutoHighlightCount,
   getBackgroundImagePath,
   getOutVideoPath,
+  getSubtitles,
+  getSubtitleMarginV,
   getFPS,
   getSpectrumWidthAbsolute,
   getSpectrumHeightAbsolute,
@@ -76,6 +78,47 @@ describe('config', function() {
     } as Config);
     const expected = path.resolve('test/path');
     expect(result).equal(expected);
+  });
+
+  it('getSubtitles', function() {
+    const result1 = getSubtitles({
+      outVideo: {}
+    } as Config);
+    expect(result1).equal(undefined);
+
+    const result2 = getSubtitles({
+      outVideo: { subtitles: '1\n00:00:00,000 --> 00:00:01,000\nTest' }
+    } as Config);
+    expect(result2).equal('1\n00:00:00,000 --> 00:00:01,000\nTest');
+
+    const result3 = getSubtitles.bind(
+      undefined,
+      {
+        outVideo: { subtitles: '' }
+      } as unknown as Config
+    );
+    expect(result3).to.throw('Invalid outVideo.subtitles: expected non-empty string content');
+  });
+
+  it('getSubtitleMarginV', function() {
+    expect(
+      getSubtitleMarginV({ outVideo: {} } as Config)
+    ).equal(defaults.subtitleMarginV);
+    expect(
+      getSubtitleMarginV({ outVideo: { subtitleMarginV: 80 } } as Config)
+    ).equal(80);
+    expect(
+      getSubtitleMarginV({ outVideo: { subtitleMarginV: 0 } } as Config)
+    ).equal(0);
+    expect(
+      getSubtitleMarginV.bind(undefined, { outVideo: { subtitleMarginV: -1 } } as Config)
+    ).to.throw('Invalid outVideo.subtitleMarginV');
+    expect(
+      getSubtitleMarginV.bind(undefined, { outVideo: { subtitleMarginV: 1.5 } } as Config)
+    ).to.throw('Invalid outVideo.subtitleMarginV');
+    expect(
+      getSubtitleMarginV.bind(undefined, { outVideo: { subtitleMarginV: NaN } } as unknown as Config)
+    ).to.throw('Invalid outVideo.subtitleMarginV');
   });
 
   it('getFPS', function() {
