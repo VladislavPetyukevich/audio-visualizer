@@ -21,7 +21,11 @@ const config = {
   },
   outVideo: {
     path: 'media/out.mp4',
-    subtitles: '1\n00:00:00,000 --> 00:00:03,000\nAudio Visualizer', // Optional. Raw SRT content string burned in via FFmpeg subtitles filter.
+    subtitles: { // Optional.
+      path: 'media/subtitles.lrc', // Optional. .srt or .lrc format.
+      rawContent: "1\n00:00:00,000 --> 99:59:59,999\nSome Artist - Some Song", // Only if path not specified.
+      alignment: "middle", // Optional. Available values: 'top', 'middle', 'bottom'. Default: 'bottom'.
+    },
     fps: 25, // Default value: 30
     resolution: { width: 1920, height: 1080 }, // Optional. Output frame size in pixels. Omit to keep the background image or video at its native resolution; when set, video frames are scaled to this size and images are resized (center-cropped first if landscape/portrait does not match the target aspect).
     spectrum: { // Audio spectrum configuration (linear bar visualizer). Optional. If neither 'spectrum' nor 'polar' is specified, 'polar' is used by default.

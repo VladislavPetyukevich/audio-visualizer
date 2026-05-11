@@ -98,11 +98,11 @@ describe('video', function () {
     const vfIdx = spawnArgs.indexOf('-vf');
     expect(vfIdx).greaterThan(-1);
     expect(spawnArgs[vfIdx + 1]).to.equal(
-      "subtitles='/tmp/subtitles.srt':force_style='MarginV=50'",
+      "subtitles='/tmp/subtitles.srt':force_style='Alignment=2'",
     );
   });
 
-  it('spawnFfmpegVideoWriter uses custom subtitle MarginV when provided', function () {
+  it('spawnFfmpegVideoWriter passes subtitle Alignment from subtitleAlignmentAss', function () {
     const childProcessReadableStream = new Readable();
     childProcessReadableStream._read = () => { };
     const childProcessWritableStream = new Writable();
@@ -121,7 +121,7 @@ describe('video', function () {
     spawnFfmpegVideoWriter({
       audioFilename: 'audio.mp3',
       subtitleFilename: '/tmp/subtitles.srt',
-      subtitleMarginV: 72,
+      subtitleAlignmentAss: 8,
       videoFileName: 'out.mp4',
       fps: 25,
     });
@@ -132,7 +132,7 @@ describe('video', function () {
     const vfIdx = spawnArgs.indexOf('-vf');
     expect(vfIdx).greaterThan(-1);
     expect(spawnArgs[vfIdx + 1]).to.equal(
-      "subtitles='/tmp/subtitles.srt':force_style='MarginV=72'",
+      "subtitles='/tmp/subtitles.srt':force_style='Alignment=8'",
     );
   });
 });

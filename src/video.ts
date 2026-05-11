@@ -13,8 +13,8 @@ export interface AudioMuxSegment {
 interface FfmpegVideoWriterConfig {
   audioFilename: string;
   subtitleFilename?: string;
-  /** Vertical margin passed to FFmpeg `subtitles` `force_style` as `MarginV` (pixels). Default 50. */
-  subtitleMarginV?: number;
+  /** ASS `Alignment` in FFmpeg `subtitles` `force_style` (e.g. 2 bottom, 5 middle, 8 top). Default 2. */
+  subtitleAlignmentAss?: number;
   videoFileName: string;
   fps: number;
   crf?: string;
@@ -35,8 +35,6 @@ const escapeSubtitleFilterPath = (subtitlePath: string) =>
     .replace(/,/g, '\\,')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]');
-
-const DEFAULT_SUBTITLE_MARGIN_V = 50;
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   if (!ffmpegPath) {
@@ -63,10 +61,10 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   );
   if (config.subtitleFilename) {
     const subPath = escapeSubtitleFilterPath(config.subtitleFilename);
-    const marginV = config.subtitleMarginV ?? DEFAULT_SUBTITLE_MARGIN_V;
+    const alignment = config.subtitleAlignmentAss ?? 2;
     args.push(
       '-vf',
-      `subtitles='${subPath}':force_style='MarginV=${marginV}'`,
+      `subtitles='${subPath}':force_style='Alignment=${alignment}'`,
     );
   }
   args.push(

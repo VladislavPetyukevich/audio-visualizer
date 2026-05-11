@@ -1,11 +1,12 @@
 import path from 'path';
+import { readFileSync } from 'fs';
 import {
   getAudioFilePath,
   getBackgroundImagePath,
   getBackgroundVideoPath,
   getOutVideoPath,
-  getSubtitles,
-  getSubtitleMarginV,
+  getSubtitleRenderSpec,
+  subtitleAlignmentToAss,
   getFPS,
   getSpectrumBusMargin,
   getSpectrumWidthAbsolute,
@@ -36,6 +37,7 @@ import {
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
+import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { createBeatDetector } from './beats';
@@ -68,9 +70,13 @@ export interface Config {
   };
   outVideo: {
     path: string;
-    subtitles?: string;
-    /** Vertical subtitle margin (`MarginV` in FFmpeg), pixels. Default 50. */
-    subtitleMarginV?: number;
+    subtitles?:
+      | string
+      | {
+          path?: string;
+          rawContent?: string;
+          alignment?: 'top' | 'middle' | 'bottom';
+        };
     fps?: number;
     resolution?: {
       width: number;
@@ -393,8 +399,29 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     const audioFilePath = getAudioFilePath(config);
     const outVideoPath = getOutVideoPath(config);
-    const subtitles = getSubtitles(config);
-    const subtitleFilePath = subtitles ? writeSubtitlesFile(subtitles) : undefined;
+    const subtitleSpec = getSubtitleRenderSpec(config);
+    let subtitleFilePath: string | undefined;
+    let subtitleFileIsTemporary = false;
+    let subtitleAlignmentAss = 2;
+    if (subtitleSpec) {
+      subtitleAlignmentAss = subtitleAlignmentToAss(subtitleSpec.alignment);
+      if (subtitleSpec.source.kind === 'file') {
+        const absPath = subtitleSpec.source.path;
+        const ext = path.extname(absPath).toLowerCase();
+        if (ext === '.lrc') {
+          const raw = readFileSync(absPath, 'utf-8');
+          subtitleFilePath = writeSubtitlesFile(lrcToSrt(raw));
+          subtitleFileIsTemporary = true;
+        } else {
+          subtitleFilePath = absPath;
+        }
+      } else {
+        subtitleFilePath = writeSubtitlesFile(
+          normalizeInlineSubtitlesToSrt(subtitleSpec.source.text),
+        );
+        subtitleFileIsTemporary = true;
+      }
+    }
     const backgroundVideoPath = getBackgroundVideoPath(config);
     const backgroundImagePath = getBackgroundImagePath(config);
     const useVideoBackground = !!backgroundVideoPath;
@@ -556,8 +583,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const ffmpegVideoWriter = spawnFfmpegVideoWriter({
           audioFilename: audioFilePath,
           videoFileName: pass.outPath,
-          ...(subtitleFilePath && { subtitleFilename: subtitleFilePath }),
-          subtitleMarginV: getSubtitleMarginV(config),
+          ...(subtitleFilePath && {
+            subtitleFilename: subtitleFilePath,
+            subtitleAlignmentAss,
+          }),
           fps: FPS,
           ...(pass.audioSegment && { audioSegment: pass.audioSegment }),
           ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
@@ -638,7 +667,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
       resolve({ exitCode: lastExitCode, outputVideoFiles });
     } finally {
-      if (subtitleFilePath) {
+      if (subtitleFilePath && subtitleFileIsTemporary) {
         cleanupTempFile(subtitleFilePath);
       }
     }
