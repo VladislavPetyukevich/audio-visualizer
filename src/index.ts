@@ -217,8 +217,12 @@ const preProcessAudio = async (
 
   for (let i = 0; i < framesCount; i++) {
     const currentFrameData = PCM_FORMAT.parseFunction(audioBuffer, i * audioDataStep, i * audioDataStep + audioDataStep);
-    processingBuffer.copyWithin(0, currentFrameData.length);
-    processingBuffer.set(currentFrameData, PROCESSING_BUFFER_SIZE - currentFrameData.length);
+    const frameDataLength = Math.min(currentFrameData.length, PROCESSING_BUFFER_SIZE);
+    const frameDataTailStart = currentFrameData.length - frameDataLength;
+    const frameDataToProcess = currentFrameData.slice(frameDataTailStart);
+
+    processingBuffer.copyWithin(0, frameDataLength);
+    processingBuffer.set(frameDataToProcess, PROCESSING_BUFFER_SIZE - frameDataLength);
 
     const audioDataParser = () => Array.from(processingBuffer);
     const spectrum = processSpectrum(audioDataParser);
