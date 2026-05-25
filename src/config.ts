@@ -16,6 +16,7 @@ export const defaults = {
   polarInnerRadius: 100,
   polarMaxBarLength: 160,
   polarBarWidth: 15,
+  filmNoiseIntensity: '25%',
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -456,6 +457,32 @@ export const getPolarOpacityParsed = (config: Config) => {
     (percentValue > 100)
   ) {
     throw new Error(`Invalid polar opacity value: '${polarOpacity}'. Percent values must be in range from '0%' to '100%'.`);
+  }
+  return percentValue / 100;
+};
+
+export const getFilmNoiseEnabled = (config: Config) =>
+  config.outVideo.filmNoise !== undefined;
+
+const getFilmNoiseIntensity = (config: Config) => {
+  const filmNoise = config.outVideo.filmNoise;
+  if (filmNoise === true || filmNoise === undefined) {
+    return defaults.filmNoiseIntensity;
+  }
+  return filmNoise.intensity || defaults.filmNoiseIntensity;
+};
+
+export const getFilmNoiseIntensityParsed = (config: Config) => {
+  const filmNoiseIntensity = getFilmNoiseIntensity(config);
+  if (!checkIsPercentValue(filmNoiseIntensity)) {
+    throw new Error(`Invalid filmNoise intensity value: '${filmNoiseIntensity}'. Use string percent value, for example '25%'.`);
+  }
+  const percentValue = parseInt(filmNoiseIntensity);
+  if (
+    (percentValue < 0) ||
+    (percentValue > 100)
+  ) {
+    throw new Error(`Invalid filmNoise intensity value: '${filmNoiseIntensity}'. Percent values must be in range from '0%' to '100%'.`);
   }
   return percentValue / 100;
 };

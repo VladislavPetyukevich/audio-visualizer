@@ -47,7 +47,8 @@ const config = {
       effect: 'volume', // Available values: 'volume', 'smooth', undefined. Default value: undefined.
       color: '#cccc99', // Default value: inverted color of background image
       opacity: '70%' // Default value: '80%'.
-    }
+    },
+    filmNoise: true, // Optional. Full-frame film grain. Use true for default intensity ('25%'), or { intensity: '30%' }.
   },
   tweaks: { // Optional
     ffmpeg_cfr: '30', // Default value: 23

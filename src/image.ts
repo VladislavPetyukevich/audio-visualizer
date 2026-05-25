@@ -41,6 +41,92 @@ export const mixColors = ({
   };
 };
 
+const clampChannel = (value: number) =>
+  value < 0 ? 0 : value > 255 ? 255 : value;
+
+const filmNoiseHash = (x: number, y: number, frameIndex: number, channel: number) => {
+  let h = (x * 374761393) ^ (y * 668265263) ^ (frameIndex * 1274126177) ^ (channel * 3266489917);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h & 0xffff) / 0xffff;
+};
+
+export const FILM_NOISE_FRAME_COUNT = 8;
+
+export interface CreateFilmNoiseApplierProps {
+  width: number;
+  height: number;
+  intensity: number;
+}
+
+export interface FilmNoiseApplier {
+  apply: (imageDstBuffer: EncodedBmp, frameIndex: number) => void;
+}
+
+const computeFilmNoiseOffsets = (
+  width: number,
+  height: number,
+  frameIndex: number,
+  maxDeviation: number,
+) => {
+  const chromaScale = 0.3;
+  const pixelCount = width * height;
+  const offsets = new Int8Array(pixelCount * 3);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offsetIndex = (y * width + x) * 3;
+      const lumaNoise = (filmNoiseHash(x, y, frameIndex, 0) - 0.5) * 2 * maxDeviation;
+      offsets[offsetIndex] = Math.round(
+        lumaNoise + (filmNoiseHash(x, y, frameIndex, 1) - 0.5) * 2 * maxDeviation * chromaScale,
+      );
+      offsets[offsetIndex + 1] = Math.round(
+        lumaNoise + (filmNoiseHash(x, y, frameIndex, 2) - 0.5) * 2 * maxDeviation * chromaScale,
+      );
+      offsets[offsetIndex + 2] = Math.round(
+        lumaNoise + (filmNoiseHash(x, y, frameIndex, 3) - 0.5) * 2 * maxDeviation * chromaScale,
+      );
+    }
+  }
+
+  return offsets;
+};
+
+export const createFilmNoiseApplier = ({
+  width,
+  height,
+  intensity,
+}: CreateFilmNoiseApplierProps): FilmNoiseApplier => {
+  if (intensity <= 0) {
+    return { apply: () => {} };
+  }
+
+  const maxDeviation = 64 * intensity;
+  const frames: Int8Array[] = [];
+  for (let frameIndex = 0; frameIndex < FILM_NOISE_FRAME_COUNT; frameIndex++) {
+    frames.push(computeFilmNoiseOffsets(width, height, frameIndex, maxDeviation));
+  }
+
+  return {
+    apply(imageDstBuffer, frameIndex) {
+      const offsets = frames[frameIndex % FILM_NOISE_FRAME_COUNT];
+      const { shiftPos, rowBytes, data } = imageDstBuffer;
+
+      for (let y = 0; y < height; y++) {
+        const rowStart = shiftPos + y * rowBytes;
+        const noiseRowStart = y * width * 3;
+        for (let x = 0; x < width; x++) {
+          const pixelIndex = rowStart + x * 3;
+          const offsetIndex = noiseRowStart + x * 3;
+          data[pixelIndex] = clampChannel(data[pixelIndex] + offsets[offsetIndex]);
+          data[pixelIndex + 1] = clampChannel(data[pixelIndex + 1] + offsets[offsetIndex + 1]);
+          data[pixelIndex + 2] = clampChannel(data[pixelIndex + 2] + offsets[offsetIndex + 2]);
+        }
+      }
+    },
+  };
+};
+
 const getRectPixelColor = (params: {
   imageDstBuffer: EncodedBmp;
   pixelIndex: number;

@@ -34,9 +34,11 @@ import {
   getAutoEditVideo,
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
+  getFilmNoiseEnabled,
+  getFilmNoiseIntensityParsed,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
+import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, createFilmNoiseApplier } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
@@ -101,7 +103,10 @@ export interface Config {
       effect?: SpectrumEffect;
       color?: Color | string;
       opacity?: string;
-    }
+    };
+    filmNoise?: true | {
+      intensity?: string;
+    };
   };
   tweaks?: {
     ffmpeg_cfr?: string;
@@ -583,6 +588,17 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const createVisualizerFrame = createVisualizerFrameGenerator(
           config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
         );
+        const filmNoiseEnabled = getFilmNoiseEnabled(config);
+        const filmNoiseIntensity = filmNoiseEnabled
+          ? getFilmNoiseIntensityParsed(config)
+          : 0;
+        const filmNoiseApplier = filmNoiseEnabled
+          ? createFilmNoiseApplier({
+              width: backgroundWidth,
+              height: backgroundHeight,
+              intensity: filmNoiseIntensity,
+            })
+          : undefined;
 
         const ffmpegVideoWriter = spawnFfmpegVideoWriter({
           audioFilename: audioFilePath,
@@ -626,6 +642,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrum,
           };
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
+          filmNoiseApplier?.apply(frameImage, i);
           const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
           if (!isFrameProcessed) {
             const isDrained = await waitDrain(ffmpegVideoWriter.stdin, ffmpegVideoWriter);

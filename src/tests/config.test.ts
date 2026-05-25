@@ -22,7 +22,9 @@ import {
   getFfmpeg_preset,
   getFrame_processing_delay,
   checkIsValidRotationAlias,
-  checkIsPercentValue
+  checkIsPercentValue,
+  getFilmNoiseEnabled,
+  getFilmNoiseIntensityParsed,
 } from '../config';
 
 describe('config', function() {
@@ -424,6 +426,44 @@ describe('config', function() {
       } as Config
     );
     expect(result4).to.throw('Invalid spectrum opacity value: \'103%\'. Percent values must be in range from \'0%\' to \'100%\'.');
+  });
+
+  it('getFilmNoiseEnabled', function() {
+    expect(getFilmNoiseEnabled({
+      outVideo: {}
+    } as Config)).equal(false);
+
+    expect(getFilmNoiseEnabled({
+      outVideo: { filmNoise: true }
+    } as Config)).equal(true);
+
+    expect(getFilmNoiseEnabled({
+      outVideo: { filmNoise: { intensity: '50%' } }
+    } as Config)).equal(true);
+  });
+
+  it('getFilmNoiseIntensityParsed', function() {
+    expect(getFilmNoiseIntensityParsed({
+      outVideo: { filmNoise: true }
+    } as Config)).equal(parseInt(defaults.filmNoiseIntensity) / 100);
+
+    expect(getFilmNoiseIntensityParsed({
+      outVideo: { filmNoise: { intensity: '50%' } }
+    } as Config)).equal(0.5);
+
+    expect(getFilmNoiseIntensityParsed.bind(
+      undefined,
+      {
+        outVideo: { filmNoise: { intensity: 'fake value' } }
+      } as Config
+    )).to.throw('Invalid filmNoise intensity value: \'fake value\'. Use string percent value, for example \'25%\'.');
+
+    expect(getFilmNoiseIntensityParsed.bind(
+      undefined,
+      {
+        outVideo: { filmNoise: { intensity: '103%' } }
+      } as Config
+    )).to.throw('Invalid filmNoise intensity value: \'103%\'. Percent values must be in range from \'0%\' to \'100%\'.');
   });
 
   it('getFfmpeg_cfr', function() {

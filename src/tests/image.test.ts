@@ -9,6 +9,8 @@ import {
   convertToBmp,
   mixValues,
   mixColors,
+  createFilmNoiseApplier,
+  FILM_NOISE_FRAME_COUNT,
 } from '../image';
 import { createBpmEncoder } from '../bpmEncoder';
 
@@ -75,6 +77,63 @@ describe('image', function () {
       opacity: 1
     });
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
+  });
+
+  it('createFilmNoiseApplier', function () {
+    const width = 8;
+    const height = 4;
+    const extraBytes = width % 4;
+    const rowBytes = 3 * width + extraBytes;
+    const shiftPos = 54;
+
+    const createSolidBuffer = () => {
+      const data = Buffer.alloc(shiftPos + rowBytes * height, 128);
+      for (let y = 0; y < height; y++) {
+        const rowStart = shiftPos + y * rowBytes;
+        for (let x = 0; x < width; x++) {
+          const pixelIndex = rowStart + x * 3;
+          data[pixelIndex] = 10;
+          data[pixelIndex + 1] = 128;
+          data[pixelIndex + 2] = 250;
+        }
+      }
+      return { shiftPos, rowBytes, data };
+    };
+
+    const noopApplier = createFilmNoiseApplier({ width, height, intensity: 0 });
+    const unchangedBuffer = createSolidBuffer();
+    noopApplier.apply(unchangedBuffer, 0);
+    expect(unchangedBuffer.data).deep.equal(createSolidBuffer().data);
+
+    const applier = createFilmNoiseApplier({ width, height, intensity: 0.5 });
+    const noisyBuffer = createSolidBuffer();
+    applier.apply(noisyBuffer, 0);
+    expect(noisyBuffer.data.equals(createSolidBuffer().data)).equal(false);
+
+    const deterministicBuffer = createSolidBuffer();
+    applier.apply(deterministicBuffer, 7);
+    const deterministicAgain = createSolidBuffer();
+    applier.apply(deterministicAgain, 7);
+    expect(deterministicBuffer.data).deep.equal(deterministicAgain.data);
+
+    const cycledBuffer = createSolidBuffer();
+    applier.apply(cycledBuffer, 7 + FILM_NOISE_FRAME_COUNT);
+    expect(cycledBuffer.data).deep.equal(deterministicBuffer.data);
+
+    const frame0Buffer = createSolidBuffer();
+    applier.apply(frame0Buffer, 0);
+    const frame1Buffer = createSolidBuffer();
+    applier.apply(frame1Buffer, 1);
+    expect(frame0Buffer.data.equals(frame1Buffer.data)).equal(false);
+
+    const clampBuffer = createSolidBuffer();
+    clampBuffer.data[shiftPos] = 0;
+    clampBuffer.data[shiftPos + 1] = 255;
+    clampBuffer.data[shiftPos + 2] = 255;
+    applier.apply(clampBuffer, 42);
+    for (let i = shiftPos; i < clampBuffer.data.length; i++) {
+      expect(clampBuffer.data[i]).within(0, 255);
+    }
   });
 
   it('createSpectrumVisualizerFrameGenerator', async function () {
