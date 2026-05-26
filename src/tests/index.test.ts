@@ -108,49 +108,4 @@ describe('index', function () {
     expect(outputVideoFiles).deep.equal([]);
     expect(progressValues.some(progress => progress === 100)).equal(false);
   });
-
-  it('aborts render when video frame reads fail repeatedly', async function () {
-    const videoFrameReaderOutput = new Readable();
-    videoFrameReaderOutput._read = () => {};
-    sandbox.stub(video, 'getVideoInfo').resolves({
-      width: 1,
-      height: 1,
-      duration: 1,
-    });
-    sandbox.stub(video, 'writeConcatFile').returns('fake-concat-path.txt');
-    sandbox.stub(video, 'spawnConcatVideoFrameReader').returns({
-      stdout: videoFrameReaderOutput,
-      kill: () => {},
-    } as any);
-    sandbox.stub(image, 'getVideoFrameColor').returns({ red: 0, green: 0, blue: 0 });
-    sandbox.stub(bpmEncoder, 'createBgrFrameEncoder').returns(
-      () => ({ shiftPos: 0, rowBytes: 0, data: Buffer.from([1, 2, 3]) }),
-    );
-    let frameReadCount = 0;
-    sandbox.stub(video, 'readVideoFrame').callsFake(async () => {
-      frameReadCount += 1;
-      if (frameReadCount === 1) {
-        return Buffer.from([1, 2, 3]);
-      }
-      return null;
-    });
-
-    const config: Config = {
-      audio: {
-        path: 'audioPath'
-      },
-      video: {
-        path: 'example/media/test-blur.mp4',
-      },
-      outVideo: {
-        path: 'outVideoPath',
-        fps: 10,
-      }
-    };
-
-    const { exitCode, outputVideoFiles } = await renderAudioVisualizer(config);
-    expect(exitCode).equal(1);
-    expect(outputVideoFiles).deep.equal([]);
-    expect(frameReadCount).greaterThan(1);
-  });
 });

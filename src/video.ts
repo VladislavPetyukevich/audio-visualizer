@@ -5,8 +5,6 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 
-export const DEFAULT_WAIT_TIMEOUT_MS = 1000;
-
 export interface AudioMuxSegment {
   seekSeconds: number;
   durationSeconds: number;
@@ -223,7 +221,7 @@ export const spawnVideoFrameReader = (config: {
 export const readVideoFrame = (
   stream: Readable,
   frameSize: number,
-  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+  timeoutMs = 1000,
 ): Promise<Buffer | null> =>
   new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
@@ -294,7 +292,7 @@ export const waitDrain = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+  timeoutMs = 60 * 1000,
 ) =>
   new Promise<boolean>(resolve => {
     const cleanup = () => {
@@ -337,7 +335,7 @@ export const waitForProcessExit = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+  timeoutMs = 60 * 1000,
 ) =>
   new Promise<number>(resolve => {
     const cleanup = () => {

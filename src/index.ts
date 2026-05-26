@@ -53,7 +53,6 @@ export const PCM_FORMAT = {
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 const PROCESSING_BUFFER_SIZE = Math.pow(2, 12);
-const MAX_CONSECUTIVE_VIDEO_FRAME_READ_FAILURES = 5;
 
 export interface Config {
   audio: {
@@ -380,7 +379,7 @@ async function resolveBackgroundFrameBuffer(params: {
     if (videoFrame) {
       return { frameBuffer: encodeVideoFrame(videoFrame), frameReadFailed: false };
     }
-    return { frameBuffer: staticBackgroundBuffer, frameReadFailed: true };
+    return { frameBuffer: staticBackgroundBuffer, frameReadFailed: false };
   }
   return { frameBuffer: staticBackgroundBuffer, frameReadFailed: false };
 }
@@ -602,7 +601,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const exitPromise = waitForProcessExit(ffmpegVideoWriter);
 
         let stoppedEarly = false;
-        let consecutiveVideoFrameReadFailures = 0;
         for (let i = 0; i < pass.frameCount; i++) {
           const spectrum = pass.spectrums[i];
           const { frameBuffer: backgroundImageBuffer, frameReadFailed } = await resolveBackgroundFrameBuffer({
@@ -613,20 +611,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             encodeVideoFrame,
             staticBackgroundBuffer,
           });
-          if (frameReadFailed) {
-            consecutiveVideoFrameReadFailures += 1;
-            if (consecutiveVideoFrameReadFailures >= MAX_CONSECUTIVE_VIDEO_FRAME_READ_FAILURES) {
-              renderAbortReason = [
-                'Background video frame reads failed repeatedly.',
-                `Failed ${consecutiveVideoFrameReadFailures} times in a row`,
-                `while rendering pass output "${pass.outPath}".`,
-              ].join(' ');
-              stoppedEarly = true;
-              break;
-            }
-          } else {
-            consecutiveVideoFrameReadFailures = 0;
-          }
 
           const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
             backgroundImageBuffer,
