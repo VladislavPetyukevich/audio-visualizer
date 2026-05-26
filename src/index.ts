@@ -38,7 +38,7 @@ import {
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
-import { spawnFfmpegVideoWriter, waitDrain, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
+import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { createBeatDetector } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
@@ -53,6 +53,7 @@ export const PCM_FORMAT = {
 };
 const FFMPEG_FORMAT = `${PCM_FORMAT.sign}${PCM_FORMAT.bit}`;
 const PROCESSING_BUFFER_SIZE = Math.pow(2, 12);
+const MAX_CONSECUTIVE_VIDEO_FRAME_READ_FAILURES = 5;
 
 export interface Config {
   audio: {
@@ -361,7 +362,7 @@ async function resolveBackgroundFrameBuffer(params: {
   videoFrameSize: number;
   encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
   staticBackgroundBuffer: EncodedBmp;
-}): Promise<EncodedBmp> {
+}): Promise<{ frameBuffer: EncodedBmp; frameReadFailed: boolean }> {
   const {
     frameIndex,
     useVideoBackground,
@@ -373,14 +374,15 @@ async function resolveBackgroundFrameBuffer(params: {
 
   if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
     if (frameIndex === 0) {
-      return staticBackgroundBuffer;
+      return { frameBuffer: staticBackgroundBuffer, frameReadFailed: false };
     }
     const videoFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
-    return videoFrame
-      ? encodeVideoFrame(videoFrame)
-      : staticBackgroundBuffer;
+    if (videoFrame) {
+      return { frameBuffer: encodeVideoFrame(videoFrame), frameReadFailed: false };
+    }
+    return { frameBuffer: staticBackgroundBuffer, frameReadFailed: true };
   }
-  return staticBackgroundBuffer;
+  return { frameBuffer: staticBackgroundBuffer, frameReadFailed: false };
 }
 
 export interface RenderAudioVisualizerResult {
@@ -556,6 +558,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       );
     };
     let lastExitCode = 0;
+    let renderAbortReason: string | undefined;
     const outputVideoFiles: string[] = [];
     try {
       passLoop: for (const pass of passes) {
@@ -596,23 +599,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
           ...(ffmpeg_preset && { preset: ffmpeg_preset }),
         });
-
-        const exitPromise = new Promise<number>(res => {
-          let settled = false;
-          ffmpegVideoWriter.on('exit', (code: number | null) => {
-            if (settled) {
-              return;
-            }
-            settled = true;
-            res(code ?? 0);
-          });
-        });
+        const exitPromise = waitForProcessExit(ffmpegVideoWriter);
 
         let stoppedEarly = false;
+        let consecutiveVideoFrameReadFailures = 0;
         for (let i = 0; i < pass.frameCount; i++) {
           const spectrum = pass.spectrums[i];
-
-          const backgroundImageBuffer = await resolveBackgroundFrameBuffer({
+          const { frameBuffer: backgroundImageBuffer, frameReadFailed } = await resolveBackgroundFrameBuffer({
             frameIndex: i,
             useVideoBackground,
             videoFrameReader,
@@ -620,6 +613,20 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             encodeVideoFrame,
             staticBackgroundBuffer,
           });
+          if (frameReadFailed) {
+            consecutiveVideoFrameReadFailures += 1;
+            if (consecutiveVideoFrameReadFailures >= MAX_CONSECUTIVE_VIDEO_FRAME_READ_FAILURES) {
+              renderAbortReason = [
+                'Background video frame reads failed repeatedly.',
+                `Failed ${consecutiveVideoFrameReadFailures} times in a row`,
+                `while rendering pass output "${pass.outPath}".`,
+              ].join(' ');
+              stoppedEarly = true;
+              break;
+            }
+          } else {
+            consecutiveVideoFrameReadFailures = 0;
+          }
 
           const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
             backgroundImageBuffer,
@@ -654,19 +661,27 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         ffmpegVideoWriter.stdin.end();
 
         lastExitCode = await exitPromise;
-        reportRenderProgress();
+        if (lastExitCode === 0 && !stoppedEarly) {
+          reportRenderProgress();
+        }
 
         if (lastExitCode === 0 && !stoppedEarly) {
           outputVideoFiles.push(pass.outPath);
         }
 
         if (stoppedEarly || lastExitCode !== 0) {
+          if (renderAbortReason && lastExitCode === 0) {
+            lastExitCode = 1;
+          }
           break passLoop;
         }
       }
 
       if (lastExitCode === 0 && outputVideoFiles.length === passes.length) {
         reportProgress(100);
+      }
+      if (renderAbortReason) {
+        console.error(renderAbortReason);
       }
 
       resolve({ exitCode: lastExitCode, outputVideoFiles });

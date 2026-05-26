@@ -5,6 +5,8 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 
+export const DEFAULT_WAIT_TIMEOUT_MS = 1000;
+
 export interface AudioMuxSegment {
   seekSeconds: number;
   durationSeconds: number;
@@ -52,12 +54,17 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   }
   args.push(
     '-i', config.audioFilename,
+    '-f', 'image2pipe',
+    '-vcodec', 'bmp',
+    '-framerate', `${config.fps}`,
+    '-i', '-',
     '-crf', crf,
     '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
     '-c:v', 'libx264',
     '-r', `${config.fps}`,
     '-pix_fmt', 'yuv420p',
     '-preset', preset,
+    '-shortest',
   );
   if (config.subtitleFilename) {
     const subPath = escapeSubtitleFilterPath(config.subtitleFilename);
@@ -67,11 +74,7 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
       `subtitles='${subPath}':force_style='Alignment=${alignment}'`,
     );
   }
-  args.push(
-    config.videoFileName,
-    '-r', `${config.fps}`,
-    '-i', '-'
-  );
+  args.push(config.videoFileName);
   const ffmpeg = spawn(ffmpegPath, args);
   if (config.onStderr) {
     ffmpeg.stderr.on('data', config.onStderr);
@@ -217,28 +220,51 @@ export const spawnVideoFrameReader = (config: {
   return spawn(ffmpegPath, args);
 };
 
-export const readVideoFrame = (stream: Readable, frameSize: number): Promise<Buffer | null> =>
+export const readVideoFrame = (
+  stream: Readable,
+  frameSize: number,
+  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+): Promise<Buffer | null> =>
   new Promise((resolve) => {
+    let timer: NodeJS.Timeout | undefined;
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      stream.removeListener('readable', onReadable);
+      stream.removeListener('end', onEnd);
+      stream.removeListener('error', onErrorOrClose);
+      stream.removeListener('close', onErrorOrClose);
+    };
+    const onReadable = () => {
+      tryRead();
+    };
+    const onEnd = () => {
+      cleanup();
+      resolve(null);
+    };
+    const onErrorOrClose = () => {
+      cleanup();
+      resolve(null);
+    };
     const tryRead = () => {
       const data = stream.read(frameSize) as Buffer | null;
       if (data !== null) {
+        cleanup();
         resolve(data.length === frameSize ? data : null);
         return;
       }
-      const onReadable = () => {
-        cleanup();
-        tryRead();
-      };
-      const onEnd = () => {
-        cleanup();
-        resolve(null);
-      };
-      const cleanup = () => {
-        stream.removeListener('readable', onReadable);
-        stream.removeListener('end', onEnd);
-      };
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          cleanup();
+          resolve(null);
+        }, timeoutMs);
+      }
       stream.once('readable', onReadable);
       stream.once('end', onEnd);
+      stream.once('error', onErrorOrClose);
+      stream.once('close', onErrorOrClose);
     };
     tryRead();
   });
@@ -268,9 +294,14 @@ export const waitDrain = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
+  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
 ) =>
   new Promise<boolean>(resolve => {
     const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       stream.removeListener('drain', onDrain);
       stream.removeListener('error', onErrorOrClose);
       stream.removeListener('close', onErrorOrClose);
@@ -286,12 +317,61 @@ export const waitDrain = (
       cleanup();
       resolve(false);
     };
+    let timer: NodeJS.Timeout | undefined;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(false);
+      }, timeoutMs);
+    }
     stream.once('drain', onDrain);
     stream.once('error', onErrorOrClose);
     stream.once('close', onErrorOrClose);
     processStream?.once('error', onErrorOrClose);
     processStream?.once('exit', onErrorOrClose);
     processStream?.once('close', onErrorOrClose);
+  });
+
+export const waitForProcessExit = (
+  processStream: {
+    once: (eventName: string, listener: (...args: any[]) => void) => any;
+    removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
+  },
+  timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
+) =>
+  new Promise<number>(resolve => {
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      processStream.removeListener('exit', onExit);
+      processStream.removeListener('close', onClose);
+      processStream.removeListener('error', onError);
+    };
+    const onExit = (code: number | null) => {
+      cleanup();
+      resolve(code ?? 0);
+    };
+    const onClose = (code: number | null) => {
+      cleanup();
+      resolve(code ?? 0);
+    };
+    const onError = () => {
+      cleanup();
+      resolve(1);
+    };
+    let timer: NodeJS.Timeout | undefined;
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(1);
+      }, timeoutMs);
+    }
+
+    processStream.once('exit', onExit);
+    processStream.once('close', onClose);
+    processStream.once('error', onError);
   });
 
 export interface VideoSegment {
