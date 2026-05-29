@@ -19,8 +19,8 @@ const onProgress = (progressPercent: number) => {
 };
 
 renderAudioVisualizer(config, onProgress)
-  .then(({ exitCode, outputVideoFiles }) => {
-    console.log(`exited with code: ${exitCode}`);
+  .then(({ exitCode, reason, outputVideoFiles }) => {
+    console.log(`exited with code: ${exitCode}${reason ? ` (${reason})` : ''}`);
     console.log(`output files:`, outputVideoFiles);
     console.log(`rendered in: `, millisecondsToTime(+new Date() - +startTime));
   });

@@ -202,13 +202,15 @@ describe('video', function () {
     const processEmitter = new EventEmitter();
     const waitPromise = waitForProcessExit(processEmitter, 50);
     setTimeout(() => processEmitter.emit('exit', 0), 5);
-    const exitCode = await waitPromise;
+    const { exitCode, reason } = await waitPromise;
     expect(exitCode).equal(0);
+    expect(reason).equal(undefined);
   });
 
   it('waitForProcessExit resolves non-zero on timeout', async function () {
     const processEmitter = new EventEmitter();
-    const exitCode = await waitForProcessExit(processEmitter, 5);
+    const { exitCode, reason } = await waitForProcessExit(processEmitter, 5);
     expect(exitCode).equal(1);
+    expect(reason).equal('waitForProcessExit timeout (5ms)');
   });
 });

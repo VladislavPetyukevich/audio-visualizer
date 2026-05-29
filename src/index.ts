@@ -386,6 +386,8 @@ async function resolveBackgroundFrameBuffer(params: {
 
 export interface RenderAudioVisualizerResult {
   exitCode: number;
+  /** Human-readable failure reason; omitted on full success (exitCode 0). */
+  reason?: string;
   /** Absolute paths of video files written successfully (exit code 0, full pass, no early stop). */
   outputVideoFiles: string[];
 }
@@ -557,7 +559,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       );
     };
     let lastExitCode = 0;
-    let renderAbortReason: string | undefined;
+    let exitReason: string | undefined;
     const outputVideoFiles: string[] = [];
     try {
       passLoop: for (const pass of passes) {
@@ -622,11 +624,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             const isDrained = await waitDrain(ffmpegVideoWriter.stdin, ffmpegVideoWriter);
             if (!isDrained) {
               stoppedEarly = true;
+              exitReason = 'ffmpeg stdin drain failed';
               break;
             }
           }
           if (shouldStop && shouldStop()) {
             stoppedEarly = true;
+            exitReason = 'render stopped by shouldStop callback';
             break;
           }
           if (frame_processing_delay) {
@@ -644,7 +648,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         }
         ffmpegVideoWriter.stdin.end();
 
-        lastExitCode = await exitPromise;
+        const { exitCode, reason: ffmpegExitReason } = await exitPromise;
+        lastExitCode = exitCode;
+        if (!exitReason && ffmpegExitReason) {
+          exitReason = ffmpegExitReason;
+        }
         if (lastExitCode === 0 && !stoppedEarly) {
           reportRenderProgress();
         }
@@ -654,7 +662,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         }
 
         if (stoppedEarly || lastExitCode !== 0) {
-          if (renderAbortReason && lastExitCode === 0) {
+          if (exitReason && lastExitCode === 0) {
             lastExitCode = 1;
           }
           break passLoop;
@@ -664,11 +672,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       if (lastExitCode === 0 && outputVideoFiles.length === passes.length) {
         reportProgress(100);
       }
-      if (renderAbortReason) {
-        console.error(renderAbortReason);
+      if (exitReason) {
+        console.error(exitReason);
       }
 
-      resolve({ exitCode: lastExitCode, outputVideoFiles });
+      resolve({ exitCode: lastExitCode, reason: exitReason, outputVideoFiles });
     } finally {
       if (subtitleFilePath && subtitleFileIsTemporary) {
         cleanupTempFile(subtitleFilePath);

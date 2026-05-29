@@ -71,15 +71,16 @@ describe('index', function () {
       }
     };
 
-    const { exitCode, outputVideoFiles } = await renderAudioVisualizer(config);
+    const { exitCode, reason, outputVideoFiles } = await renderAudioVisualizer(config);
     expect(exitCode).equal(EXIT_CODE);
+    expect(reason).equal(undefined);
     expect(outputVideoFiles).deep.equal([path.resolve('outVideoPath')]);
   });
 
   it('resolves and does not report 100 when process completion times out', async function () {
     (this as any).setMockWriter(false);
     sandbox.stub(video, 'waitForProcessExit').callsFake(
-      () => Promise.resolve(1)
+      () => Promise.resolve({ exitCode: 1 })
     );
     const progressValues: number[] = [];
     const config: Config = {

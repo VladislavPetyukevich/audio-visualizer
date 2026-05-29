@@ -338,6 +338,19 @@ export const waitDrain = (
     processStream?.once('close', onErrorOrClose);
   });
 
+export interface ProcessExitResult {
+  exitCode: number;
+  reason?: string;
+}
+
+const resolveProcessExit = (
+  resolve: (result: ProcessExitResult) => void,
+  exitCode: number,
+  reason?: string,
+) => {
+  resolve({ exitCode, ...(reason && { reason }) });
+};
+
 export const waitForProcessExit = (
   processStream: {
     once: (eventName: string, listener: (...args: any[]) => void) => any;
@@ -345,7 +358,7 @@ export const waitForProcessExit = (
   },
   timeoutMs = timeouts.waitForProcessExit,
 ) =>
-  new Promise<number>(resolve => {
+  new Promise<ProcessExitResult>(resolve => {
     const cleanup = () => {
       if (timer) {
         clearTimeout(timer);
@@ -357,22 +370,32 @@ export const waitForProcessExit = (
     };
     const onExit = (code: number | null) => {
       cleanup();
-      resolve(code ?? 0);
+      const exitCode = code ?? 0;
+      resolveProcessExit(
+        resolve,
+        exitCode,
+        exitCode !== 0 ? `ffmpeg exited with code ${exitCode}` : undefined,
+      );
     };
     const onClose = (code: number | null) => {
       cleanup();
-      resolve(code ?? 0);
+      const exitCode = code ?? 0;
+      resolveProcessExit(
+        resolve,
+        exitCode,
+        exitCode !== 0 ? `ffmpeg exited with code ${exitCode}` : undefined,
+      );
     };
     const onError = () => {
       cleanup();
-      resolve(1);
+      resolveProcessExit(resolve, 1, 'ffmpeg process error');
     };
     let timer: NodeJS.Timeout | undefined;
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
         console.error('waitForProcessExit timeout:', timeoutMs);
         cleanup();
-        resolve(1);
+        resolveProcessExit(resolve, 1, `waitForProcessExit timeout (${timeoutMs}ms)`);
       }, timeoutMs);
     }
 
