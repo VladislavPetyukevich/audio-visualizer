@@ -27,6 +27,12 @@ interface FfmpegVideoWriterConfig {
   audioSegment?: AudioMuxSegment;
 }
 
+const timeouts = {
+  readVideoFrame: 30 * 1000,
+  waitDrain: 120 * 1000,
+  waitForProcessExit: 120 * 1000,
+};
+
 const escapeSubtitleFilterPath = (subtitlePath: string) =>
   subtitlePath
     .replace(/\\/g, '\\\\')
@@ -221,7 +227,7 @@ export const spawnVideoFrameReader = (config: {
 export const readVideoFrame = (
   stream: Readable,
   frameSize: number,
-  timeoutMs = 1000,
+  timeoutMs = timeouts.readVideoFrame,
 ): Promise<Buffer | null> =>
   new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
@@ -255,6 +261,7 @@ export const readVideoFrame = (
       }
       if (timeoutMs > 0) {
         timer = setTimeout(() => {
+          console.error('readVideoFrame timeout:', timeoutMs);
           cleanup();
           resolve(null);
         }, timeoutMs);
@@ -292,7 +299,7 @@ export const waitDrain = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = 60 * 1000,
+  timeoutMs = timeouts.waitDrain,
 ) =>
   new Promise<boolean>(resolve => {
     const cleanup = () => {
@@ -318,6 +325,7 @@ export const waitDrain = (
     let timer: NodeJS.Timeout | undefined;
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
+        console.error('waitDrain timeout:', timeoutMs);
         cleanup();
         resolve(false);
       }, timeoutMs);
@@ -335,7 +343,7 @@ export const waitForProcessExit = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = 60 * 1000,
+  timeoutMs = timeouts.waitForProcessExit,
 ) =>
   new Promise<number>(resolve => {
     const cleanup = () => {
@@ -362,6 +370,7 @@ export const waitForProcessExit = (
     let timer: NodeJS.Timeout | undefined;
     if (timeoutMs > 0) {
       timer = setTimeout(() => {
+        console.error('waitForProcessExit timeout:', timeoutMs);
         cleanup();
         resolve(1);
       }, timeoutMs);
