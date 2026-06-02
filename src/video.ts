@@ -30,7 +30,7 @@ interface FfmpegVideoWriterConfig {
 const timeouts = {
   readVideoFrame: 30 * 1000,
   waitDrain: 120 * 1000,
-  waitForProcessExit: 120 * 1000,
+  waitForProcessExit: 480 * 1000,
 };
 
 const escapeSubtitleFilterPath = (subtitlePath: string) =>
