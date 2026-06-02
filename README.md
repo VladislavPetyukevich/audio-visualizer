@@ -52,7 +52,12 @@ const config = {
   tweaks: { // Optional
     ffmpeg_cfr: '30', // Default value: 23
     ffmpeg_preset: 'ultrafast', // Default value: medium
-    frame_processing_delay: 1000 // Delay between processing frames in milliseconds
+    frame_processing_delay: 1000, // Delay between processing frames in milliseconds
+    timeouts: { // Optional. FFmpeg I/O timeouts in milliseconds
+      readVideoFrame: 30000, // Max wait for one background video frame from ffmpeg. Default: 30000
+      waitDrain: 120000, // Max wait for ffmpeg stdin to accept more frames. Default: 120000
+      waitForProcessExit: 480000 // Max wait for ffmpeg to finish after all frames are sent. Default: 480000
+    }
   }
 };
 

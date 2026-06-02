@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
+import { defaults } from './config';
 
 export interface AudioMuxSegment {
   seekSeconds: number;
@@ -26,12 +27,6 @@ interface FfmpegVideoWriterConfig {
   /** One contiguous trim of the same audio file (muxed highlight). */
   audioSegment?: AudioMuxSegment;
 }
-
-const timeouts = {
-  readVideoFrame: 30 * 1000,
-  waitDrain: 120 * 1000,
-  waitForProcessExit: 480 * 1000,
-};
 
 const escapeSubtitleFilterPath = (subtitlePath: string) =>
   subtitlePath
@@ -227,7 +222,7 @@ export const spawnVideoFrameReader = (config: {
 export const readVideoFrame = (
   stream: Readable,
   frameSize: number,
-  timeoutMs = timeouts.readVideoFrame,
+  timeoutMs = defaults.timeouts.readVideoFrame,
 ): Promise<Buffer | null> =>
   new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
@@ -299,7 +294,7 @@ export const waitDrain = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = timeouts.waitDrain,
+  timeoutMs = defaults.timeouts.waitDrain,
 ) =>
   new Promise<boolean>(resolve => {
     const cleanup = () => {
@@ -356,7 +351,7 @@ export const waitForProcessExit = (
     once: (eventName: string, listener: (...args: any[]) => void) => any;
     removeListener: (eventName: string, listener: (...args: any[]) => void) => any;
   },
-  timeoutMs = timeouts.waitForProcessExit,
+  timeoutMs = defaults.timeouts.waitForProcessExit,
 ) =>
   new Promise<ProcessExitResult>(resolve => {
     const cleanup = () => {

@@ -18,6 +18,7 @@ import {
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
+  getVideoTimeouts,
   getOutputResolution,
   rotationAliasValues,
   getSpectrumRotation,
@@ -107,6 +108,11 @@ export interface Config {
     ffmpeg_cfr?: string;
     ffmpeg_preset?: string;
     frame_processing_delay?: number;
+    timeouts?: {
+      readVideoFrame?: number;
+      waitDrain?: number;
+      waitForProcessExit?: number;
+    };
   };
 }
 
@@ -259,6 +265,7 @@ async function prepareBackgroundForRender(params: {
   outputResolution: ReturnType<typeof getOutputResolution>;
   fps: number;
   autoEditVideo: boolean;
+  readVideoFrameTimeout: number;
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -278,6 +285,7 @@ async function prepareBackgroundForRender(params: {
     outputResolution,
     fps,
     autoEditVideo,
+    readVideoFrameTimeout,
   } = params;
 
   if (useVideoBackground && backgroundVideoPath) {
@@ -312,7 +320,11 @@ async function prepareBackgroundForRender(params: {
       }),
     });
 
-    const firstFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
+    const firstFrame = await readVideoFrame(
+      videoFrameReader.stdout,
+      videoFrameSize,
+      readVideoFrameTimeout,
+    );
     if (!firstFrame) {
       throw new Error(`Could not read frames from video: ${backgroundVideoPath}`);
     }
@@ -361,6 +373,7 @@ async function resolveBackgroundFrameBuffer(params: {
   videoFrameSize: number;
   encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
   staticBackgroundBuffer: EncodedBmp;
+  readVideoFrameTimeout: number;
 }): Promise<{ frameBuffer: EncodedBmp; frameReadFailed: boolean }> {
   const {
     frameIndex,
@@ -369,13 +382,18 @@ async function resolveBackgroundFrameBuffer(params: {
     videoFrameSize,
     encodeVideoFrame,
     staticBackgroundBuffer,
+    readVideoFrameTimeout,
   } = params;
 
   if (useVideoBackground && videoFrameReader && encodeVideoFrame) {
     if (frameIndex === 0) {
       return { frameBuffer: staticBackgroundBuffer, frameReadFailed: false };
     }
-    const videoFrame = await readVideoFrame(videoFrameReader.stdout, videoFrameSize);
+    const videoFrame = await readVideoFrame(
+      videoFrameReader.stdout,
+      videoFrameSize,
+      readVideoFrameTimeout,
+    );
     if (videoFrame) {
       return { frameBuffer: encodeVideoFrame(videoFrame), frameReadFailed: false };
     }
@@ -445,6 +463,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const ffmpeg_cfr = getFfmpeg_cfr(config);
     const ffmpeg_preset = getFfmpeg_preset(config);
     const frame_processing_delay = getFrame_processing_delay(config);
+    const videoTimeouts = getVideoTimeouts(config);
 
     const audioDuration = audioBuffer.length / sampleRate;
     const framesCount = Math.trunc(audioDuration * FPS);
@@ -581,6 +600,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           outputResolution,
           fps: FPS,
           autoEditVideo: getAutoEditVideo(config),
+          readVideoFrameTimeout: videoTimeouts.readVideoFrame,
         });
         reportRenderProgress();
 
@@ -600,7 +620,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
           ...(ffmpeg_preset && { preset: ffmpeg_preset }),
         });
-        const exitPromise = waitForProcessExit(ffmpegVideoWriter);
+        const exitPromise = waitForProcessExit(
+          ffmpegVideoWriter,
+          videoTimeouts.waitForProcessExit,
+        );
 
         let stoppedEarly = false;
         for (let i = 0; i < pass.frameCount; i++) {
@@ -612,6 +635,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             videoFrameSize,
             encodeVideoFrame,
             staticBackgroundBuffer,
+            readVideoFrameTimeout: videoTimeouts.readVideoFrame,
           });
 
           const commonVisualizerFrameProps: CommonVisualizerFrameProps = {
@@ -621,7 +645,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
           const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
           if (!isFrameProcessed) {
-            const isDrained = await waitDrain(ffmpegVideoWriter.stdin, ffmpegVideoWriter);
+            const isDrained = await waitDrain(
+              ffmpegVideoWriter.stdin,
+              ffmpegVideoWriter,
+              videoTimeouts.waitDrain,
+            );
             if (!isDrained) {
               stoppedEarly = true;
               exitReason = 'ffmpeg stdin drain failed';

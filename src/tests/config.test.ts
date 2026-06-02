@@ -21,6 +21,7 @@ import {
   getFfmpeg_cfr,
   getFfmpeg_preset,
   getFrame_processing_delay,
+  getVideoTimeouts,
   checkIsValidRotationAlias,
   checkIsPercentValue
 } from '../config';
@@ -460,6 +461,26 @@ describe('config', function() {
       tweaks: { frame_processing_delay: 420 }
     } as Config);
     expect(result2).equal(420);
+  });
+
+  it('getVideoTimeouts', function() {
+    const result1 = getVideoTimeouts({ tweaks: {} } as Config);
+    expect(result1).deep.equal(defaults.timeouts);
+
+    const result2 = getVideoTimeouts({
+      tweaks: {
+        timeouts: {
+          readVideoFrame: 1000,
+          waitDrain: 2000,
+          waitForProcessExit: 3000,
+        },
+      },
+    } as Config);
+    expect(result2).deep.equal({
+      readVideoFrame: 1000,
+      waitDrain: 2000,
+      waitForProcessExit: 3000,
+    });
   });
 
   it('checkIsValidRotationAlias', function() {

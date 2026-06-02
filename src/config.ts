@@ -16,6 +16,11 @@ export const defaults = {
   polarInnerRadius: 100,
   polarMaxBarLength: 160,
   polarBarWidth: 15,
+  timeouts: {
+    readVideoFrame: 30 * 1000,
+    waitDrain: 120 * 1000,
+    waitForProcessExit: 480 * 1000,
+  },
 };
 
 type RelativePositionValue = 0 | 0.5 | 1;
@@ -357,6 +362,15 @@ export const getFfmpeg_preset = (config: Config) =>
 
 export const getFrame_processing_delay = (config: Config) =>
   config.tweaks && config.tweaks.frame_processing_delay;
+
+export const getVideoTimeouts = (config: Config) => ({
+  readVideoFrame:
+    config.tweaks?.timeouts?.readVideoFrame ?? defaults.timeouts.readVideoFrame,
+  waitDrain:
+    config.tweaks?.timeouts?.waitDrain ?? defaults.timeouts.waitDrain,
+  waitForProcessExit:
+    config.tweaks?.timeouts?.waitForProcessExit ?? defaults.timeouts.waitForProcessExit,
+});
 
 // Polar visualizer config getters
 const getPolarX = (config: Config) =>
