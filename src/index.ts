@@ -138,7 +138,32 @@ const createVisualizerFrameGenerator = (
   defaultColor: Color,
   spectrumBusMargin: number
 ): (params: CommonVisualizerFrameProps) => EncodedBmp => {
-  if (!config.outVideo.spectrum) {
+  if (config.outVideo.spectrum) {
+    const createSpectrumVisualizerFrame = createSpectrumVisualizerFrameGenerator();
+    const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundWidth);
+    const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundHeight);
+    const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundWidth);
+    const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundHeight);
+    const spectrumRotation = getSpectrumRotation(config);
+    const spectrumColor = getSpectrumColor(config) || invertColor(defaultColor);
+    const spectrumEffect = getSpectrumEffect(config);
+    const spectrumOpacity = getSpectrumOpacityParsed(config);
+
+    return (params: CommonVisualizerFrameProps) => {
+      return createSpectrumVisualizerFrame({
+        ...params,
+        size: { width: spectrumWidth, height: spectrumHeight },
+        position: { x: spectrumX, y: spectrumY },
+        rotation: spectrumRotation,
+        margin: spectrumBusMargin,
+        color: spectrumColor,
+        opacity: spectrumOpacity,
+        spectrumEffect,
+      });
+    };
+  }
+
+  if (config.outVideo.polar) {
     const createPolarVisualizerFrame = createPolarVisualizerFrameGenerator();
     const polarX = getPolarXAbsolute(config, backgroundWidth);
     const polarY = getPolarYAbsolute(config, backgroundHeight);
@@ -163,28 +188,8 @@ const createVisualizerFrameGenerator = (
       });
     };
   }
-  const createSpectrumVisualizerFrame = createSpectrumVisualizerFrameGenerator();
-  const spectrumWidth = getSpectrumWidthAbsolute(config, backgroundWidth);
-  const spectrumHeight = getSpectrumHeightAbsolute(config, backgroundHeight);
-  const spectrumX = getSpectrumXAbsolute(config, spectrumWidth, backgroundWidth);
-  const spectrumY = getSpectrumYAbsolute(config, spectrumHeight, backgroundHeight);
-  const spectrumRotation = getSpectrumRotation(config);
-  const spectrumColor = getSpectrumColor(config) || invertColor(defaultColor);
-  const spectrumEffect = getSpectrumEffect(config);
-  const spectrumOpacity = getSpectrumOpacityParsed(config);
 
-  return (params: CommonVisualizerFrameProps) => {
-    return createSpectrumVisualizerFrame({
-      ...params,
-      size: { width: spectrumWidth, height: spectrumHeight },
-      position: { x: spectrumX, y: spectrumY },
-      rotation: spectrumRotation,
-      margin: spectrumBusMargin,
-      color: spectrumColor,
-      opacity: spectrumOpacity,
-      spectrumEffect,
-    });
-  };
+  return (params: CommonVisualizerFrameProps) => params.backgroundImageBuffer;
 };
 
 interface PreProcessedAudio {

@@ -77,6 +77,74 @@ describe('index', function () {
     expect(outputVideoFiles).deep.equal([path.resolve('outVideoPath')]);
   });
 
+  it('does not render a visualizer when neither spectrum nor polar is specified', async function () {
+    const polarSpy = sandbox.spy(image, 'createPolarVisualizerFrameGenerator');
+    const spectrumSpy = sandbox.spy(image, 'createSpectrumVisualizerFrameGenerator');
+    const config: Config = {
+      audio: {
+        path: 'audioPath'
+      },
+      image: {
+        path: 'example/media/horses.png'
+      },
+      outVideo: {
+        path: 'outVideoPath',
+        fps: 1
+      }
+    };
+
+    const { exitCode } = await renderAudioVisualizer(config);
+    expect(exitCode).equal(EXIT_CODE);
+    expect(polarSpy.called).equal(false);
+    expect(spectrumSpy.called).equal(false);
+  });
+
+  it('renders a polar visualizer when polar is specified', async function () {
+    const polarSpy = sandbox.spy(image, 'createPolarVisualizerFrameGenerator');
+    const spectrumSpy = sandbox.spy(image, 'createSpectrumVisualizerFrameGenerator');
+    const config: Config = {
+      audio: {
+        path: 'audioPath'
+      },
+      image: {
+        path: 'example/media/horses.png'
+      },
+      outVideo: {
+        path: 'outVideoPath',
+        fps: 1,
+        polar: {}
+      }
+    };
+
+    const { exitCode } = await renderAudioVisualizer(config);
+    expect(exitCode).equal(EXIT_CODE);
+    expect(polarSpy.calledOnce).equal(true);
+    expect(spectrumSpy.called).equal(false);
+  });
+
+  it('renders a spectrum visualizer when spectrum is specified', async function () {
+    const polarSpy = sandbox.spy(image, 'createPolarVisualizerFrameGenerator');
+    const spectrumSpy = sandbox.spy(image, 'createSpectrumVisualizerFrameGenerator');
+    const config: Config = {
+      audio: {
+        path: 'audioPath'
+      },
+      image: {
+        path: 'example/media/horses.png'
+      },
+      outVideo: {
+        path: 'outVideoPath',
+        fps: 1,
+        spectrum: {}
+      }
+    };
+
+    const { exitCode } = await renderAudioVisualizer(config);
+    expect(exitCode).equal(EXIT_CODE);
+    expect(spectrumSpy.calledOnce).equal(true);
+    expect(polarSpy.called).equal(false);
+  });
+
   it('resolves and does not report 100 when process completion times out', async function () {
     (this as any).setMockWriter(false);
     sandbox.stub(video, 'waitForProcessExit').callsFake(
