@@ -11,6 +11,7 @@ import {
   mixColors,
   applyCameraShake,
   getCutShakeOffset,
+  buildCutShakeAmplitudes,
 } from '../image';
 import { createBpmEncoder } from '../bpmEncoder';
 
@@ -93,6 +94,27 @@ describe('image', function () {
   it('getCutShakeOffset uses the closer overlapping cut', function () {
     const cutFrames = new Set([10, 11]);
     expect(getCutShakeOffset(11, cutFrames)).deep.equal(getCutShakeOffset(11, new Set([11])));
+  });
+
+  it('buildCutShakeAmplitudes lasts about one-third of a beat', function () {
+    const at128 = buildCutShakeAmplitudes(14);
+    expect(at128.length).equal(5);
+    expect(at128[0]).equal(14);
+    expect(at128[at128.length - 1]).equal(1);
+    expect(buildCutShakeAmplitudes(30).length).equal(10);
+    expect(buildCutShakeAmplitudes(6).length).equal(3);
+  });
+
+  it('getCutShakeOffset uses a longer envelope when amplitudes are passed', function () {
+    const cutFrames = new Set([10]);
+    const longAmp = buildCutShakeAmplitudes(30);
+    const magnitude = (offset: { x: number; y: number }) => Math.hypot(offset.x, offset.y);
+    expect(getCutShakeOffset(15, cutFrames)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(15, cutFrames, longAmp))).greaterThan(0);
+    expect(getCutShakeOffset(10 + longAmp.length, cutFrames, longAmp)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(10, cutFrames, longAmp))).greaterThan(
+      magnitude(getCutShakeOffset(12, cutFrames, longAmp)),
+    );
   });
 
   it('applyCameraShake shifts pixels and clamps edges', function () {

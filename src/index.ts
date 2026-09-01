@@ -37,12 +37,12 @@ import {
   getAudioAutoHighlightCount,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset } from './image';
+import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { createBeatDetector } from './beats';
-export { BeatInfo, BeatDetectorOptions } from './beats';
+import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices } from './beats';
+export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
 export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun } from './highlight';
@@ -267,6 +267,7 @@ async function prepareBackgroundForRender(params: {
   fps: number;
   autoEditVideo: boolean;
   readVideoFrameTimeout: number;
+  tempo?: TempoEstimate | null;
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -289,6 +290,7 @@ async function prepareBackgroundForRender(params: {
     fps,
     autoEditVideo,
     readVideoFrameTimeout,
+    tempo,
   } = params;
 
   if (useVideoBackground && backgroundVideoPath) {
@@ -308,7 +310,10 @@ async function prepareBackgroundForRender(params: {
       sceneChanges,
       videoInfo.duration,
       fps,
-      { beatIntensities },
+      {
+        beatIntensities,
+        ...(autoEditVideo && tempo ? { tempo } : {}),
+      },
     );
 
     const concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, fps);
@@ -595,6 +600,11 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const outputVideoFiles: string[] = [];
     try {
       passLoop: for (const pass of passes) {
+        const autoEditVideo = getAutoEditVideo(config);
+        const tempo = autoEditVideo ? estimateTempo(pass.spectrums, FPS) : null;
+        const shakeAmplitudes = tempo
+          ? buildCutShakeAmplitudes(tempo.periodFrames)
+          : undefined;
         const {
           backgroundWidth,
           backgroundHeight,
@@ -604,7 +614,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           videoFrameSize,
           encodeVideoFrame,
           concatFilePath,
-          cutFrameIndices,
         } = await prepareBackgroundForRender({
           useVideoBackground,
           backgroundVideoPath,
@@ -614,12 +623,19 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           framesCount: pass.frameCount,
           outputResolution,
           fps: FPS,
-          autoEditVideo: getAutoEditVideo(config),
+          autoEditVideo,
           readVideoFrameTimeout: videoTimeouts.readVideoFrame,
+          ...(tempo ? { tempo } : {}),
         });
         reportRenderProgress();
 
-        const cutFrames = new Set(cutFrameIndices);
+        const shakeFrames = new Set(
+          autoEditVideo
+            ? (tempo
+              ? beatGridFrameIndices(tempo, pass.frameCount)
+              : pass.beatIndices.filter(frameIndex => frameIndex > 0))
+            : [],
+        );
         const createVisualizerFrame = createVisualizerFrameGenerator(
           config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
         );
@@ -659,7 +675,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrum,
           };
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
-          const shakeOffset = getCutShakeOffset(i, cutFrames);
+          const shakeOffset = getCutShakeOffset(i, shakeFrames, shakeAmplitudes);
           if (shakeOffset.x !== 0 || shakeOffset.y !== 0) {
             applyCameraShake(frameImage, backgroundWidth, backgroundHeight, shakeOffset.x, shakeOffset.y);
           }

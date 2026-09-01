@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -266,5 +266,54 @@ describe('video', function () {
       30,
     );
     expect(getCutFrameIndices(segments)).deep.equal([60, 120]);
+  });
+
+  it('snapBeatsToTempoGrid snaps onsets within a quarter-beat to the grid', function () {
+    const snapped = snapBeatsToTempoGrid(
+      [
+        { frameIndex: 29, intensity: 0.8 },
+        { frameIndex: 50, intensity: 0.4 },
+      ],
+      { periodFrames: 14, phaseFrame: 0 },
+      200,
+    );
+    expect(snapped.map(beat => beat.frameIndex)).deep.equal([28, 50]);
+    expect(snapped[0].intensity).equal(0.8);
+  });
+
+  it('buildBeatSyncedSegments uses 2-4 beat spacing when tempo is set', function () {
+    const fps = 30;
+    const bpm = 90;
+    const periodFrames = fps * 60 / bpm;
+    const segments = buildBeatSyncedSegments(
+      [20, 40, 60, 80, 100, 120, 140, 160],
+      200,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+      ],
+      12,
+      fps,
+      { tempo: { bpm, periodFrames, phaseFrame: 0 } },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([40, 80, 120, 160]);
+  });
+
+  it('buildBeatSyncedSegments snaps off-grid onsets before choosing cuts', function () {
+    const fps = 30;
+    const bpm = 128;
+    const periodFrames = 14;
+    const segments = buildBeatSyncedSegments(
+      [57, 113],
+      180,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+      ],
+      12,
+      fps,
+      { tempo: { bpm, periodFrames, phaseFrame: 0 } },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([56, 112]);
   });
 });

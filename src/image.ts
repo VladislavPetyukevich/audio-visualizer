@@ -595,6 +595,29 @@ export const invertColor = (color: Color) =>
 
 /** Pixel shift strength for the cut frame and the frames after it. */
 export const CUT_SHAKE_AMPLITUDE_BY_OFFSET = [14, 9, 5, 3, 1] as const;
+export const CUT_SHAKE_PEAK_AMPLITUDE = 14;
+export const MIN_CUT_SHAKE_FRAMES = 3;
+export const SHAKE_DURATION_BEAT_FRACTION = 1 / 3;
+
+export const buildCutShakeAmplitudes = (periodFrames: number): number[] => {
+  if (!(periodFrames > 0)) {
+    return Array.from(CUT_SHAKE_AMPLITUDE_BY_OFFSET);
+  }
+  const frameCount = Math.max(
+    MIN_CUT_SHAKE_FRAMES,
+    Math.round(periodFrames * SHAKE_DURATION_BEAT_FRACTION),
+  );
+  if (frameCount === 1) {
+    return [CUT_SHAKE_PEAK_AMPLITUDE];
+  }
+  const decayTo = 1 / CUT_SHAKE_PEAK_AMPLITUDE;
+  const amplitudes: number[] = [];
+  for (let i = 0; i < frameCount; i++) {
+    const t = i / (frameCount - 1);
+    amplitudes.push(Math.max(1, Math.round(CUT_SHAKE_PEAK_AMPLITUDE * Math.pow(decayTo, t))));
+  }
+  return amplitudes;
+};
 
 const clampInt = (value: number, min: number, max: number) => {
   if (value < min) {
@@ -609,10 +632,14 @@ const clampInt = (value: number, min: number, max: number) => {
 export const getCutShakeOffset = (
   frameIndex: number,
   cutFrames: ReadonlySet<number>,
+  amplitudes: ReadonlyArray<number> = CUT_SHAKE_AMPLITUDE_BY_OFFSET,
 ): { x: number; y: number } => {
+  if (amplitudes.length === 0) {
+    return { x: 0, y: 0 };
+  }
   let framesAfterCut = -1;
   let originCut = -1;
-  for (let offset = 0; offset < CUT_SHAKE_AMPLITUDE_BY_OFFSET.length; offset++) {
+  for (let offset = 0; offset < amplitudes.length; offset++) {
     const cut = frameIndex - offset;
     if (cutFrames.has(cut) && (framesAfterCut === -1 || offset < framesAfterCut)) {
       framesAfterCut = offset;
@@ -622,7 +649,7 @@ export const getCutShakeOffset = (
   if (framesAfterCut === -1) {
     return { x: 0, y: 0 };
   }
-  const amplitude = CUT_SHAKE_AMPLITUDE_BY_OFFSET[framesAfterCut];
+  const amplitude = amplitudes[framesAfterCut];
   const angle = originCut * 2.399 + framesAfterCut * 2.1;
   return {
     x: Math.round(Math.cos(angle) * amplitude),
