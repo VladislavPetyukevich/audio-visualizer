@@ -593,6 +593,75 @@ export const getVideoFrameColor = (bgrBuffer: Buffer, width: number, height: num
 export const invertColor = (color: Color) =>
   ({ red: 255 - color.red, green: 255 - color.green, blue: 255 - color.blue });
 
+/** Pixel shift strength for the cut frame and the frames after it. */
+export const CUT_SHAKE_AMPLITUDE_BY_OFFSET = [14, 9, 5, 3, 1] as const;
+
+const clampInt = (value: number, min: number, max: number) => {
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+};
+
+export const getCutShakeOffset = (
+  frameIndex: number,
+  cutFrames: ReadonlySet<number>,
+): { x: number; y: number } => {
+  let framesAfterCut = -1;
+  let originCut = -1;
+  for (let offset = 0; offset < CUT_SHAKE_AMPLITUDE_BY_OFFSET.length; offset++) {
+    const cut = frameIndex - offset;
+    if (cutFrames.has(cut) && (framesAfterCut === -1 || offset < framesAfterCut)) {
+      framesAfterCut = offset;
+      originCut = cut;
+    }
+  }
+  if (framesAfterCut === -1) {
+    return { x: 0, y: 0 };
+  }
+  const amplitude = CUT_SHAKE_AMPLITUDE_BY_OFFSET[framesAfterCut];
+  const angle = originCut * 2.399 + framesAfterCut * 2.1;
+  return {
+    x: Math.round(Math.cos(angle) * amplitude),
+    y: Math.round(Math.sin(angle) * amplitude),
+  };
+};
+
+export const applyCameraShake = (
+  imageDstBuffer: EncodedBmp,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+) => {
+  const ox = Math.round(offsetX);
+  const oy = Math.round(offsetY);
+  if (ox === 0 && oy === 0) {
+    return;
+  }
+  const { shiftPos, rowBytes, data } = imageDstBuffer;
+  const pixelBytes = height * rowBytes;
+  const sourcePixels = Buffer.allocUnsafe(pixelBytes);
+  data.copy(sourcePixels, 0, shiftPos, shiftPos + pixelBytes);
+
+  for (let y = 0; y < height; y++) {
+    const srcY = clampInt(y - oy, 0, height - 1);
+    const dstRow = shiftPos + y * rowBytes;
+    const srcRow = srcY * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const srcX = clampInt(x - ox, 0, width - 1);
+      const dstIndex = dstRow + x * 3;
+      const srcIndex = srcRow + srcX * 3;
+      data[dstIndex] = sourcePixels[srcIndex];
+      data[dstIndex + 1] = sourcePixels[srcIndex + 1];
+      data[dstIndex + 2] = sourcePixels[srcIndex + 2];
+    }
+  }
+};
+
 const hexToRgb = (hex: String) => {
   const red = parseInt(hex.substring(1, 3), 16);
   const green = parseInt(hex.substring(3, 5), 16);

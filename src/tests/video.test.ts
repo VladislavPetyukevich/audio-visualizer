@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -212,5 +212,59 @@ describe('video', function () {
     const { exitCode, reason } = await waitForProcessExit(processEmitter, 5);
     expect(exitCode).equal(1);
     expect(reason).equal('waitForProcessExit timeout (5ms)');
+  });
+
+  it('getCutFrameIndices skips the opening segment', function () {
+    const segments = buildBeatSyncedSegments(
+      [12, 24, 36],
+      48,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+        { frameNumber: 2, pts: 0, ptsTime: 8 },
+      ],
+      12,
+      30,
+      { minCutIntervalSeconds: 0 },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([12, 24, 36]);
+  });
+
+  it('getCutFrameIndices is empty when auto-edit has no scene changes', function () {
+    const segments = buildBeatSyncedSegments([10, 20], 30, [], 8, 30);
+    expect(segments).deep.equal([
+      { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: 30 },
+    ]);
+    expect(getCutFrameIndices(segments)).deep.equal([]);
+  });
+
+  it('selectAutoEditCutFrames keeps at least 2 seconds between cuts', function () {
+    const fps = 30;
+    const beats = [15, 30, 45, 60, 75, 90, 105, 120].map(frameIndex => ({ frameIndex }));
+    expect(selectAutoEditCutFrames(beats, fps, 150)).deep.equal([60, 120]);
+  });
+
+  it('selectAutoEditCutFrames prefers the strongest beat in the allowed window', function () {
+    const fps = 30;
+    const beats = [
+      { frameIndex: 60, intensity: 0.2 },
+      { frameIndex: 90, intensity: 0.9 },
+      { frameIndex: 100, intensity: 0.4 },
+    ];
+    expect(selectAutoEditCutFrames(beats, fps, 180)).deep.equal([90]);
+  });
+
+  it('buildBeatSyncedSegments spaces auto-edit cuts instead of cutting every beat', function () {
+    const segments = buildBeatSyncedSegments(
+      [15, 30, 45, 60, 75, 90, 105, 120],
+      150,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+      ],
+      12,
+      30,
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([60, 120]);
   });
 });

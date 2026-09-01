@@ -12,7 +12,7 @@ const config = {
   // OR use a video as background (optional):
   // video: {
   //   path: 'media/background.mp4', // Supports MP4, MOV, AVI, MKV. Loops automatically if shorter than audio.
-  //   autoEdit: true, // Optional. Detects scene cuts and advances between them on each beat so the background edits with the music; omit or false for one continuous play-through from the start.
+  //   autoEdit: true, // Optional. Detects scene cuts and advances between them on stronger beats at least ~2s apart so the background edits with the music; omit or false for one continuous play-through from the start. When enabled, a brief camera shake is applied on each cut.
   // },
   audio: {
     path: 'media/audio.wav', // Supports MP3 and WAV audio

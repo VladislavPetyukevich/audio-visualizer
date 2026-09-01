@@ -422,11 +422,76 @@ const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, mi
   return merged;
 };
 
+/** Minimum time between auto-edit cuts; cuts still land on beats. */
+export const DEFAULT_AUTO_EDIT_MIN_CUT_INTERVAL_SECONDS = 2;
+/** Window after the minimum gap in which the strongest beat is chosen. */
+export const DEFAULT_AUTO_EDIT_MAX_CUT_INTERVAL_SECONDS = 4;
+
+export const selectAutoEditCutFrames = (
+  beats: Array<{ frameIndex: number; intensity?: number }>,
+  fps: number,
+  totalFrames: number,
+  minIntervalSeconds = DEFAULT_AUTO_EDIT_MIN_CUT_INTERVAL_SECONDS,
+  maxIntervalSeconds = DEFAULT_AUTO_EDIT_MAX_CUT_INTERVAL_SECONDS,
+): number[] => {
+  const sorted = beats
+    .filter(beat => beat.frameIndex > 0 && beat.frameIndex < totalFrames)
+    .sort((a, b) => a.frameIndex - b.frameIndex);
+  if (sorted.length === 0 || fps <= 0) {
+    return [];
+  }
+  if (minIntervalSeconds <= 0) {
+    return sorted.map(beat => beat.frameIndex);
+  }
+
+  const minGap = Math.max(1, Math.round(fps * minIntervalSeconds));
+  const maxGap = Math.max(minGap, Math.round(fps * maxIntervalSeconds));
+  const selected: number[] = [];
+  let lastCut = 0;
+
+  while (lastCut + minGap < totalFrames) {
+    const windowStart = lastCut + minGap;
+    const windowEnd = Math.min(lastCut + maxGap, totalFrames);
+
+    let best: { frameIndex: number; intensity?: number } | undefined;
+    let nextAfterWindow: { frameIndex: number; intensity?: number } | undefined;
+
+    for (const beat of sorted) {
+      if (beat.frameIndex < windowStart) {
+        continue;
+      }
+      if (beat.frameIndex >= windowEnd) {
+        nextAfterWindow = beat;
+        break;
+      }
+      const intensity = beat.intensity ?? 0;
+      if (!best || intensity > (best.intensity ?? 0)) {
+        best = beat;
+      }
+    }
+
+    const chosen = best ?? nextAfterWindow;
+    if (!chosen) {
+      break;
+    }
+    selected.push(chosen.frameIndex);
+    lastCut = chosen.frameIndex;
+  }
+
+  return selected;
+};
+
 export const buildBeatSyncedSegments = (
   beatFrameIndices: number[],
   totalFrames: number,
   sceneChanges: SceneChange[],
   videoDuration: number,
+  fps: number,
+  options?: {
+    beatIntensities?: number[];
+    minCutIntervalSeconds?: number;
+    maxCutIntervalSeconds?: number;
+  },
 ): VideoSegment[] => {
   if (sceneChanges.length === 0) {
     return [
@@ -447,7 +512,18 @@ export const buildBeatSyncedSegments = (
     seekPositions = Array.from({ length: count }, (_, i) => (i * videoDuration) / count);
   }
 
-  const boundaries = [0, ...beatFrameIndices];
+  const cutBeats = selectAutoEditCutFrames(
+    beatFrameIndices.map((frameIndex, i) => ({
+      frameIndex,
+      intensity: options?.beatIntensities?.[i],
+    })),
+    fps,
+    totalFrames,
+    options?.minCutIntervalSeconds,
+    options?.maxCutIntervalSeconds,
+  );
+
+  const boundaries = [0, ...cutBeats];
   if (boundaries[boundaries.length - 1] !== totalFrames) {
     boundaries.push(totalFrames);
   }
@@ -463,6 +539,12 @@ export const buildBeatSyncedSegments = (
   }
   return segments;
 };
+
+export const getCutFrameIndices = (segments: VideoSegment[]): number[] =>
+  segments
+    .slice(1)
+    .map(segment => segment.outputStartFrame)
+    .filter(frameIndex => frameIndex > 0);
 
 export const writeConcatFile = (
   segments: VideoSegment[],

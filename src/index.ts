@@ -37,9 +37,9 @@ import {
   getAudioAutoHighlightCount,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
+import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
-import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
+import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
 import { createBeatDetector } from './beats';
 export { BeatInfo, BeatDetectorOptions } from './beats';
@@ -261,6 +261,7 @@ async function prepareBackgroundForRender(params: {
   backgroundVideoPath: string | undefined;
   backgroundImagePath: string | undefined;
   beatFrameIndices: number[];
+  beatIntensities?: number[];
   framesCount: number;
   outputResolution: ReturnType<typeof getOutputResolution>;
   fps: number;
@@ -275,12 +276,14 @@ async function prepareBackgroundForRender(params: {
   videoFrameSize: number;
   encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
   concatFilePath?: string;
+  cutFrameIndices: number[];
 }> {
   const {
     useVideoBackground,
     backgroundVideoPath,
     backgroundImagePath,
     beatFrameIndices,
+    beatIntensities,
     framesCount,
     outputResolution,
     fps,
@@ -304,9 +307,12 @@ async function prepareBackgroundForRender(params: {
       framesCount,
       sceneChanges,
       videoInfo.duration,
+      fps,
+      { beatIntensities },
     );
 
     const concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, fps);
+    const cutFrameIndices = autoEditVideo ? getCutFrameIndices(segments) : [];
 
     const videoFrameReader = spawnConcatVideoFrameReader({
       concatFilePath,
@@ -339,6 +345,7 @@ async function prepareBackgroundForRender(params: {
       videoFrameSize,
       encodeVideoFrame,
       concatFilePath,
+      cutFrameIndices,
     };
   }
 
@@ -363,6 +370,7 @@ async function prepareBackgroundForRender(params: {
     defaultColor,
     staticBackgroundBuffer,
     videoFrameSize: 0,
+    cutFrameIndices: [],
   };
 }
 
@@ -497,6 +505,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const autoHighlight = getAudioAutoHighlight(config);
     let spectrumsForRender = preprocessed.spectrums;
     let beatIndicesForRender = preprocessed.beatFrameIndices;
+    let beatIntensitiesForRender = preprocessed.beatEvents.map(event => event.intensity);
     let framesCountForRender = framesCount;
     type HighlightSliceResult = ReturnType<typeof computeHighlightSlice> extends Promise<
       infer R
@@ -516,6 +525,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       );
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;
+      beatIntensitiesForRender = highlightSlice.beatIntensities;
       framesCountForRender = highlightSlice.highlightFrames;
       reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
     } else {
@@ -531,6 +541,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       outPath: string;
       spectrums: number[][];
       beatIndices: number[];
+      beatIntensities: number[];
       frameCount: number;
       audioSegment: import('./highlight').HighlightAudioSegment | undefined;
     };
@@ -546,6 +557,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             outPath: numberedPath,
             spectrums: run.spectrums,
             beatIndices: run.beatFrameIndices,
+            beatIntensities: run.beatIntensities,
             frameCount: run.highlightFrames,
             audioSegment: run.audioSegment,
           };
@@ -555,6 +567,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             outPath: outVideoPath,
             spectrums: spectrumsForRender,
             beatIndices: beatIndicesForRender,
+            beatIntensities: beatIntensitiesForRender,
             frameCount: framesCountForRender,
             audioSegment:
               autoHighlight &&
@@ -591,11 +604,13 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           videoFrameSize,
           encodeVideoFrame,
           concatFilePath,
+          cutFrameIndices,
         } = await prepareBackgroundForRender({
           useVideoBackground,
           backgroundVideoPath,
           backgroundImagePath,
           beatFrameIndices: pass.beatIndices,
+          beatIntensities: pass.beatIntensities,
           framesCount: pass.frameCount,
           outputResolution,
           fps: FPS,
@@ -604,6 +619,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         });
         reportRenderProgress();
 
+        const cutFrames = new Set(cutFrameIndices);
         const createVisualizerFrame = createVisualizerFrameGenerator(
           config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
         );
@@ -643,6 +659,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrum,
           };
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
+          const shakeOffset = getCutShakeOffset(i, cutFrames);
+          if (shakeOffset.x !== 0 || shakeOffset.y !== 0) {
+            applyCameraShake(frameImage, backgroundWidth, backgroundHeight, shakeOffset.x, shakeOffset.y);
+          }
           const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
           if (!isFrameProcessed) {
             const isDrained = await waitDrain(
