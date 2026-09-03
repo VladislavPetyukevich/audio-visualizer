@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid, projectBeatsOntoTempoGrid } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -281,6 +281,19 @@ describe('video', function () {
     expect(snapped[0].intensity).equal(0.8);
   });
 
+  it('projectBeatsOntoTempoGrid fills the grid and copies nearby onset intensity', function () {
+    const projected = projectBeatsOntoTempoGrid(
+      [
+        { frameIndex: 29, intensity: 0.8 },
+        { frameIndex: 50, intensity: 0.4 },
+      ],
+      { periodFrames: 14, phaseFrame: 0 },
+      50,
+    );
+    expect(projected.map(beat => beat.frameIndex)).deep.equal([14, 28, 42]);
+    expect(projected.map(beat => beat.intensity)).deep.equal([0, 0.8, 0]);
+  });
+
   it('buildBeatSyncedSegments uses 2-4 beat spacing when tempo is set', function () {
     const fps = 30;
     const bpm = 90;
@@ -299,13 +312,14 @@ describe('video', function () {
     expect(getCutFrameIndices(segments)).deep.equal([40, 80, 120, 160]);
   });
 
-  it('buildBeatSyncedSegments snaps off-grid onsets before choosing cuts', function () {
+  it('buildBeatSyncedSegments places scene cuts on the BPM grid', function () {
     const fps = 30;
     const bpm = 128;
     const periodFrames = 14;
+    const totalFrames = 180;
     const segments = buildBeatSyncedSegments(
       [57, 113],
-      180,
+      totalFrames,
       [
         { frameNumber: 0, pts: 0, ptsTime: 1 },
         { frameNumber: 1, pts: 0, ptsTime: 4 },
@@ -314,6 +328,51 @@ describe('video', function () {
       fps,
       { tempo: { bpm, periodFrames, phaseFrame: 0 } },
     );
-    expect(getCutFrameIndices(segments)).deep.equal([56, 112]);
+    const cuts = getCutFrameIndices(segments);
+    expect(cuts.length).greaterThan(0);
+    for (const cut of cuts) {
+      expect(cut % periodFrames).equal(0);
+    }
+  });
+
+  it('buildBeatSyncedSegments cuts on the BPM grid even without detected onsets', function () {
+    const fps = 30;
+    const bpm = 90;
+    const periodFrames = fps * 60 / bpm;
+    const segments = buildBeatSyncedSegments(
+      [],
+      200,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+      ],
+      12,
+      fps,
+      { tempo: { bpm, periodFrames, phaseFrame: 0 } },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([40, 80, 120, 160]);
+  });
+
+  it('buildBeatSyncedSegments prefers the strongest on-grid beat in the cut window', function () {
+    const fps = 30;
+    const bpm = 90;
+    const periodFrames = fps * 60 / bpm;
+    const beats = [20, 40, 60, 80, 100, 120, 140, 160];
+    const intensities = [0.1, 0.1, 0.9, 0.1, 0.1, 0.8, 0.1, 0.1];
+    const segments = buildBeatSyncedSegments(
+      beats,
+      160,
+      [
+        { frameNumber: 0, pts: 0, ptsTime: 1 },
+        { frameNumber: 1, pts: 0, ptsTime: 4 },
+      ],
+      12,
+      fps,
+      {
+        beatIntensities: intensities,
+        tempo: { bpm, periodFrames, phaseFrame: 0 },
+      },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([60, 120]);
   });
 });

@@ -5,7 +5,7 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 import { defaults } from './config';
-import { TempoEstimate } from './beats';
+import { TempoEstimate, beatGridFrameIndices } from './beats';
 
 export interface AudioMuxSegment {
   seekSeconds: number;
@@ -474,6 +474,39 @@ export const snapBeatsToTempoGrid = (
   return merged.sort((a, b) => a.frameIndex - b.frameIndex);
 };
 
+/** Every BPM-grid beat, with onset intensity copied onto the nearest grid frame. */
+export const projectBeatsOntoTempoGrid = (
+  beats: Array<{ frameIndex: number; intensity?: number }>,
+  tempo: Pick<TempoEstimate, 'periodFrames' | 'phaseFrame'>,
+  totalFrames: number,
+): Array<{ frameIndex: number; intensity?: number }> => {
+  const grid = beatGridFrameIndices(tempo, totalFrames);
+  if (grid.length === 0) {
+    return [];
+  }
+  const period = tempo.periodFrames;
+  const maxSnap = Math.max(1, period * BEAT_SNAP_TOLERANCE);
+  const intensityByFrame = new Map<number, number>();
+  for (const beat of beats) {
+    const n = Math.round((beat.frameIndex - tempo.phaseFrame) / period);
+    const gridFrame = Math.round(tempo.phaseFrame + n * period);
+    if (Math.abs(beat.frameIndex - gridFrame) > maxSnap) {
+      continue;
+    }
+    if (gridFrame <= 0 || gridFrame >= totalFrames) {
+      continue;
+    }
+    const intensity = beat.intensity ?? 0;
+    if (intensity >= (intensityByFrame.get(gridFrame) ?? 0)) {
+      intensityByFrame.set(gridFrame, intensity);
+    }
+  }
+  return grid.map(frameIndex => ({
+    frameIndex,
+    intensity: intensityByFrame.get(frameIndex) ?? 0,
+  }));
+};
+
 export const selectAutoEditCutFrames = (
   beats: Array<{ frameIndex: number; intensity?: number }>,
   fps: number,
@@ -569,7 +602,7 @@ export const buildBeatSyncedSegments = (
     intensity: options?.beatIntensities?.[i],
   }));
   if (tempo) {
-    beats = snapBeatsToTempoGrid(beats, tempo, totalFrames);
+    beats = projectBeatsOntoTempoGrid(beats, tempo, totalFrames);
   }
 
   const cutBeats = selectAutoEditCutFrames(

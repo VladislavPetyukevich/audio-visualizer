@@ -1,3 +1,5 @@
+import MusicTempo from 'music-tempo';
+
 export interface BeatInfo {
   isBeat: boolean;
   intensity: number;
@@ -29,6 +31,9 @@ export const MAX_TEMPO_BPM = 180;
 export const PREFERRED_TEMPO_BPM_MIN = 90;
 export const PREFERRED_TEMPO_BPM_MAX = 160;
 export const DEFAULT_BASS_END_INDEX = 8;
+/** Longest PCM window passed to music-tempo (seconds), taken from the start of the audio. */
+export const MAX_TEMPO_ANALYSIS_SECONDS = 90;
+const TEMPO_TIME_STEP = 0.01;
 
 export const frameBassEnergy = (spectrum: number[], bassEndIndex = DEFAULT_BASS_END_INDEX): number => {
   const end = Math.min(bassEndIndex, spectrum.length);
@@ -91,159 +96,112 @@ export const createBeatDetector = (fps: number, options?: BeatDetectorOptions) =
   };
 };
 
+const foldTempoBpm = (bpm: number): number => {
+  let folded = bpm;
+  while (folded > MAX_TEMPO_BPM && folded / 2 >= MIN_TEMPO_BPM) {
+    folded /= 2;
+  }
+  while (folded < MIN_TEMPO_BPM && folded * 2 <= MAX_TEMPO_BPM) {
+    folded *= 2;
+  }
+  return folded;
+};
+
+const samplesToArray = (samples: ArrayLike<number>, maxLength: number): number[] => {
+  const n = Math.min(samples.length, maxLength);
+  if (Array.isArray(samples) && n === samples.length) {
+    return samples;
+  }
+  const audioData = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    audioData[i] = samples[i];
+  }
+  return audioData;
+};
+
 export const estimateTempo = (
-  spectrums: number[][],
+  samples: ArrayLike<number>,
+  sampleRate: number,
   fps: number,
-  options?: { bassEndIndex?: number },
 ): TempoEstimate | null => {
-  if (!spectrums || spectrums.length === 0 || !(fps > 0)) {
+  if (!samples || samples.length === 0 || !(sampleRate > 0) || !(fps > 0)) {
     return null;
   }
 
-  const bassEndIndex = options?.bassEndIndex ?? DEFAULT_BASS_END_INDEX;
-  const n = spectrums.length;
-  const energies = new Float64Array(n);
-  let sum = 0;
-  let sumSq = 0;
-  for (let i = 0; i < n; i++) {
-    const e = frameBassEnergy(spectrums[i], bassEndIndex);
-    energies[i] = e;
-    sum += e;
-    sumSq += e * e;
-  }
-  const mean = sum / n;
-  const variance = sumSq / n - mean * mean;
-  if (!(variance > 1e-12)) {
+  const maxSamples = Math.max(1, Math.floor(sampleRate * MAX_TEMPO_ANALYSIS_SECONDS));
+  const audioData = samplesToArray(samples, maxSamples);
+  const hopSize = Math.max(1, Math.round(sampleRate * TEMPO_TIME_STEP));
+
+  try {
+    const mt = new MusicTempo(audioData, {
+      hopSize,
+      timeStep: TEMPO_TIME_STEP,
+      minBeatInterval: 60 / MAX_TEMPO_BPM,
+      maxBeatInterval: 60 / MIN_TEMPO_BPM,
+    });
+    const beatInterval = Number(mt.beatInterval);
+    let bpm = Number(mt.tempo);
+    if (!(bpm > 0) && beatInterval > 0) {
+      bpm = 60 / beatInterval;
+    }
+    if (!(bpm > 0)) {
+      return null;
+    }
+
+    bpm = foldTempoBpm(bpm);
+    if (bpm < MIN_TEMPO_BPM * 0.9 || bpm > MAX_TEMPO_BPM * 1.1) {
+      return null;
+    }
+
+    const periodFrames = fps * 60 / bpm;
+    const periodInt = Math.max(1, Math.round(periodFrames));
+    const firstBeatSec = mt.beats && mt.beats.length > 0 ? Number(mt.beats[0]) : 0;
+    let phaseFrame = 0;
+    if (firstBeatSec >= 0 && isFinite(firstBeatSec)) {
+      phaseFrame = Math.round(firstBeatSec * fps);
+      phaseFrame = ((phaseFrame % periodInt) + periodInt) % periodInt;
+    }
+
+    return {
+      bpm: Math.round(bpm),
+      periodFrames,
+      phaseFrame,
+    };
+  } catch {
     return null;
   }
+};
 
-  const lagMin = Math.max(1, Math.round(fps * 60 / MAX_TEMPO_BPM));
-  const lagMax = Math.min(n - 2, Math.round(fps * 60 / MIN_TEMPO_BPM));
-  if (lagMax < lagMin) {
-    return null;
+export const shiftTempoPhase = (
+  tempo: TempoEstimate,
+  startFrame: number,
+): TempoEstimate => {
+  const period = tempo.periodFrames;
+  if (!(period > 0) || startFrame === 0) {
+    return tempo;
   }
-
-  for (let i = 0; i < n; i++) {
-    energies[i] -= mean;
-  }
-
-  const corr: number[] = [];
-  for (let i = 0; i <= lagMax; i++) {
-    corr.push(0);
-  }
-  let peakLag = lagMin;
-  let peakCorr = -Infinity;
-  for (let lag = lagMin; lag <= lagMax; lag++) {
-    let acc = 0;
-    const count = n - lag;
-    for (let i = 0; i < count; i++) {
-      acc += energies[i] * energies[i + lag];
-    }
-    const value = acc / count;
-    corr[lag] = value;
-    if (value > peakCorr) {
-      peakCorr = value;
-      peakLag = lag;
-    }
-  }
-  if (!(peakCorr > 0)) {
-    return null;
-  }
-
-  const candidateLags = [peakLag];
-  const halfLag = Math.round(peakLag / 2);
-  const twiceLag = peakLag * 2;
-  if (halfLag >= lagMin && halfLag <= lagMax && candidateLags.indexOf(halfLag) === -1) {
-    candidateLags.push(halfLag);
-  }
-  if (twiceLag >= lagMin && twiceLag <= lagMax && candidateLags.indexOf(twiceLag) === -1) {
-    candidateLags.push(twiceLag);
-  }
-
-  const corrThreshold = peakCorr * 0.85;
-  let bestLag = peakLag;
-  let bestScore = -Infinity;
-  for (let c = 0; c < candidateLags.length; c++) {
-    const lag = candidateLags[c];
-    const value = corr[lag];
-    if (value < corrThreshold) {
-      continue;
-    }
-    const bpmAtLag = 60 * fps / lag;
-    const inPreferred =
-      bpmAtLag >= PREFERRED_TEMPO_BPM_MIN && bpmAtLag <= PREFERRED_TEMPO_BPM_MAX;
-    const score = value + (inPreferred ? peakCorr * 0.05 : 0);
-    if (score > bestScore) {
-      bestScore = score;
-      bestLag = lag;
-    }
-  }
-
-  let frac = 0;
-  if (bestLag > lagMin && bestLag < lagMax) {
-    const y0 = corr[bestLag - 1];
-    const y1 = corr[bestLag];
-    const y2 = corr[bestLag + 1];
-    const denom = 2 * (2 * y1 - y0 - y2);
-    if (Math.abs(denom) > 1e-12) {
-      frac = (y0 - y2) / denom;
-      if (frac > 0.5) {
-        frac = 0.5;
-      } else if (frac < -0.5) {
-        frac = -0.5;
-      }
-    }
-  }
-
-  const interpLag = bestLag + frac;
-  const bpm = 60 * fps / interpLag;
-  if (bpm < MIN_TEMPO_BPM * 0.9 || bpm > MAX_TEMPO_BPM * 1.1) {
-    return null;
-  }
-
-  const periodFrames = interpLag;
-  const phaseMax = Math.max(1, Math.round(periodFrames));
-  const phaseWindow = Math.min(n, Math.max(phaseMax * 4, Math.round(fps * 2)));
-  let bestPhase = 0;
-  let bestPhaseScore = -Infinity;
-  for (let offset = 0; offset < phaseMax; offset++) {
-    let score = 0;
-    let count = 0;
-    for (let k = 0; ; k++) {
-      const i = Math.round(offset + k * periodFrames);
-      if (i >= phaseWindow) {
-        break;
-      }
-      if (i >= 0) {
-        score += energies[i] + mean;
-        count++;
-      }
-    }
-    const avg = count > 0 ? score / count : 0;
-    if (avg > bestPhaseScore) {
-      bestPhaseScore = avg;
-      bestPhase = offset;
-    }
-  }
-
+  const periodInt = Math.max(1, Math.round(period));
+  const phase = ((Math.round(tempo.phaseFrame) - startFrame) % periodInt + periodInt) % periodInt;
   return {
-    bpm,
-    periodFrames,
-    phaseFrame: bestPhase,
+    bpm: tempo.bpm,
+    periodFrames: period,
+    phaseFrame: phase,
   };
 };
 
 export const beatGridFrameIndices = (
   tempo: Pick<TempoEstimate, 'periodFrames' | 'phaseFrame'>,
   totalFrames: number,
+  stride = 1,
 ): number[] => {
   const period = tempo.periodFrames;
+  const step = Math.max(1, Math.round(stride));
   if (!(period > 0) || totalFrames <= 1) {
     return [];
   }
   const frames: number[] = [];
   const nStart = tempo.phaseFrame > 0 ? 0 : 1;
-  for (let n = nStart; ; n++) {
+  for (let n = nStart; ; n += step) {
     const frame = Math.round(tempo.phaseFrame + n * period);
     if (frame >= totalFrames) {
       break;

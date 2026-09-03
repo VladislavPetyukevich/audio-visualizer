@@ -88,6 +88,15 @@ export const bufferToUInt8 = (buffer: Buffer, start: number, end: number) => {
 export const normalizeAudioData = (PCMData: number[]) =>
   PCMData.map(num => (num - 128) / 128);
 
+export const pcmU8ToFloatSamples = (buffer: Buffer): number[] => {
+  const n = buffer.length;
+  const samples = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    samples[i] = (buffer[i] - 128) / 128;
+  }
+  return samples;
+};
+
 export const spawnFfmpegAudioReader = (filename: string, format: string) => {
   if (!ffmpegPath) {
     throw new Error('ffmpeg path not found');
