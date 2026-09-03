@@ -24,6 +24,8 @@ export interface TempoEstimate {
   bpm: number;
   periodFrames: number;
   phaseFrame: number;
+  /** Beat times in seconds from the start of the analyzed audio. */
+  beatsSec?: number[];
 }
 
 export const MIN_TEMPO_BPM = 70;
@@ -119,6 +121,35 @@ const samplesToArray = (samples: ArrayLike<number>, maxLength: number): number[]
   return audioData;
 };
 
+const wrapIntoPeriod = (value: number, period: number): number => {
+  if (!(period > 0) || !isFinite(value)) {
+    return 0;
+  }
+  let wrapped = value - period * Math.floor(value / period);
+  if (wrapped < 0) {
+    wrapped += period;
+  }
+  if (wrapped >= period) {
+    wrapped = 0;
+  }
+  return wrapped;
+};
+
+const circularMeanPhase = (frames: number[], period: number): number => {
+  if (!(period > 0) || frames.length === 0) {
+    return 0;
+  }
+  let sinSum = 0;
+  let cosSum = 0;
+  for (const frame of frames) {
+    const angle = (2 * Math.PI * frame) / period;
+    sinSum += Math.sin(angle);
+    cosSum += Math.cos(angle);
+  }
+  const phase = Math.atan2(sinSum, cosSum) * period / (2 * Math.PI);
+  return wrapIntoPeriod(phase, period);
+};
+
 export const estimateTempo = (
   samples: ArrayLike<number>,
   sampleRate: number,
@@ -154,18 +185,19 @@ export const estimateTempo = (
     }
 
     const periodFrames = fps * 60 / bpm;
-    const periodInt = Math.max(1, Math.round(periodFrames));
-    const firstBeatSec = mt.beats && mt.beats.length > 0 ? Number(mt.beats[0]) : 0;
-    let phaseFrame = 0;
-    if (firstBeatSec >= 0 && isFinite(firstBeatSec)) {
-      phaseFrame = Math.round(firstBeatSec * fps);
-      phaseFrame = ((phaseFrame % periodInt) + periodInt) % periodInt;
-    }
+    const beatsSec = (mt.beats ?? [])
+      .map(t => Number(t))
+      .filter(t => t >= 0 && isFinite(t));
+    const beatFrames = beatsSec.map(t => t * fps);
+    const phaseFrame = beatFrames.length > 0
+      ? wrapIntoPeriod(circularMeanPhase(beatFrames, periodFrames), periodFrames)
+      : 0;
 
     return {
       bpm: Math.round(bpm),
       periodFrames,
       phaseFrame,
+      ...(beatsSec.length > 0 ? { beatsSec } : {}),
     };
   } catch {
     return null;
@@ -180,13 +212,46 @@ export const shiftTempoPhase = (
   if (!(period > 0) || startFrame === 0) {
     return tempo;
   }
-  const periodInt = Math.max(1, Math.round(period));
-  const phase = ((Math.round(tempo.phaseFrame) - startFrame) % periodInt + periodInt) % periodInt;
   return {
-    bpm: tempo.bpm,
-    periodFrames: period,
-    phaseFrame: phase,
+    ...tempo,
+    phaseFrame: wrapIntoPeriod(tempo.phaseFrame - startFrame, period),
   };
+};
+
+/** Beat-grid phase for a later audio window, using in-window beat times when available. */
+export const tempoForWindow = (
+  tempo: TempoEstimate,
+  startFrame: number,
+  fps: number,
+  windowFrames?: number,
+  localOnsetFrames?: number[],
+): TempoEstimate => {
+  const period = tempo.periodFrames;
+  if (!(period > 0) || !(fps > 0)) {
+    return tempo;
+  }
+  const startSec = startFrame / fps;
+  const endSec = windowFrames != null && windowFrames >= 0
+    ? (startFrame + windowFrames) / fps
+    : Number.POSITIVE_INFINITY;
+  const inWindow = (tempo.beatsSec ?? []).filter(t => t >= startSec && t < endSec);
+  if (inWindow.length > 0) {
+    const localFrames = inWindow.map(t => (t - startSec) * fps);
+    return {
+      ...tempo,
+      phaseFrame: wrapIntoPeriod(circularMeanPhase(localFrames, period), period),
+    };
+  }
+  const onsets = (localOnsetFrames ?? []).filter(frame =>
+    frame > 0 && (windowFrames == null || frame < windowFrames),
+  );
+  if (onsets.length > 0) {
+    return {
+      ...tempo,
+      phaseFrame: wrapIntoPeriod(circularMeanPhase(onsets, period), period),
+    };
+  }
+  return shiftTempoPhase(tempo, startFrame);
 };
 
 export const beatGridFrameIndices = (

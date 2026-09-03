@@ -41,8 +41,8 @@ import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, conv
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, shiftTempoPhase, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
-export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase } from './beats';
+import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, tempoForWindow, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
+export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
 export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun } from './highlight';
@@ -620,7 +620,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     try {
       passLoop: for (const pass of passes) {
         const tempo = trackTempo
-          ? shiftTempoPhase(trackTempo, pass.startFrame)
+          ? tempoForWindow(trackTempo, pass.startFrame, FPS, pass.frameCount, pass.beatIndices)
           : null;
         const shakeAmplitudes = tempo
           ? buildCutShakeAmplitudes(tempo.periodFrames)
