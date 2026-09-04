@@ -227,7 +227,12 @@ export const readVideoFrame = (
 ): Promise<Buffer | null> =>
   new Promise((resolve) => {
     let timer: NodeJS.Timeout | undefined;
-    const cleanup = () => {
+    let settled = false;
+    const finish = (result: Buffer | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
@@ -236,38 +241,37 @@ export const readVideoFrame = (
       stream.removeListener('end', onEnd);
       stream.removeListener('error', onErrorOrClose);
       stream.removeListener('close', onErrorOrClose);
+      resolve(result);
     };
     const onReadable = () => {
       tryRead();
     };
     const onEnd = () => {
-      cleanup();
-      resolve(null);
+      finish(null);
     };
     const onErrorOrClose = () => {
-      cleanup();
-      resolve(null);
+      finish(null);
     };
     const tryRead = () => {
       const data = stream.read(frameSize) as Buffer | null;
       if (data !== null) {
-        cleanup();
-        resolve(data.length === frameSize ? data : null);
-        return;
+        finish(data.length === frameSize ? data : null);
       }
-      if (timeoutMs > 0) {
-        timer = setTimeout(() => {
-          console.error('readVideoFrame timeout:', timeoutMs);
-          cleanup();
-          resolve(null);
-        }, timeoutMs);
-      }
-      stream.once('readable', onReadable);
-      stream.once('end', onEnd);
-      stream.once('error', onErrorOrClose);
-      stream.once('close', onErrorOrClose);
     };
     tryRead();
+    if (settled) {
+      return;
+    }
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        console.error('readVideoFrame timeout:', timeoutMs);
+        finish(null);
+      }, timeoutMs);
+    }
+    stream.on('readable', onReadable);
+    stream.once('end', onEnd);
+    stream.once('error', onErrorOrClose);
+    stream.once('close', onErrorOrClose);
   });
 
 export const getProgress = (onProgress: (currentFrame: number) => any) =>
@@ -656,7 +660,8 @@ export const writeConcatFile = (
       const take = Math.min(remaining, available);
       content += `file '${escaped}'\n`;
       content += `inpoint ${pos.toFixed(6)}\n`;
-      content += `outpoint ${(pos + take).toFixed(6)}\n\n`;
+      content += `outpoint ${(pos + take).toFixed(6)}\n`;
+      content += `duration ${take.toFixed(6)}\n\n`;
       remaining -= take;
       pos = 0;
     }
@@ -688,7 +693,10 @@ export const spawnConcatVideoFrameReader = (config: {
   const args = [
     '-f', 'concat',
     '-safe', '0',
+    '-fflags', '+genpts',
     '-i', config.concatFilePath,
+    '-an',
+    '-avoid_negative_ts', 'make_zero',
     '-r', `${config.fps}`,
     '-frames:v', `${config.totalFrames}`,
   ];
