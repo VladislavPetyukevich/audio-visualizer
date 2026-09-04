@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, spawnConcatVideoFrameReader } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -196,6 +196,75 @@ describe('video', function () {
     readable._read = () => {};
     const frame = await readVideoFrame(readable, 4, 5);
     expect(frame).equal(null);
+  });
+
+  it('readVideoFrame assembles a frame from multiple chunks', async function () {
+    const readable = new Readable();
+    readable._read = () => {};
+    const framePromise = readVideoFrame(readable, 6, 200);
+    await new Promise(resolve => setImmediate(resolve));
+    readable.push(Buffer.from([1, 2]));
+    await new Promise(resolve => setImmediate(resolve));
+    readable.push(Buffer.from([3, 4]));
+    await new Promise(resolve => setImmediate(resolve));
+    readable.push(Buffer.from([5, 6]));
+    const frame = await framePromise;
+    expect(!!frame && frame.equals(Buffer.from([1, 2, 3, 4, 5, 6]))).equal(true);
+  });
+
+  it('readVideoFrame does not timeout after a successful chunked read', async function () {
+    const errors: any[] = [];
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      errors.push(args);
+    };
+    const readable = new Readable();
+    readable._read = () => {};
+    try {
+      const timeoutMs = 40;
+      const framePromise = readVideoFrame(readable, 4, timeoutMs);
+      await new Promise(resolve => setImmediate(resolve));
+      readable.push(Buffer.from([1, 2]));
+      await new Promise(resolve => setImmediate(resolve));
+      readable.push(Buffer.from([3, 4]));
+      const frame = await framePromise;
+      expect(!!frame && frame.equals(Buffer.from([1, 2, 3, 4]))).equal(true);
+      await new Promise(resolve => setTimeout(resolve, timeoutMs + 30));
+      expect(errors).deep.equal([]);
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it('spawnConcatVideoFrameReader regenerates timestamps for auto-edit concat', function () {
+    const childProcessReadableStream = new Readable();
+    childProcessReadableStream._read = () => { };
+    const childProcessWritableStream = new Writable();
+    (<Pipe>childProcessWritableStream.pipe) = () => childProcessWritableStream;
+
+    childProcessStream.stdin = childProcessWritableStream;
+    childProcessStream.stderr = childProcessReadableStream;
+
+    let spawnArgs: string[] = [];
+    const spawnStub = child_process.spawn as SinonStub;
+    spawnStub.callsFake((_cmd: string, args: string[]) => {
+      spawnArgs = args;
+      return childProcessStream as ChildProcessWithoutNullStreams;
+    });
+
+    spawnConcatVideoFrameReader({
+      concatFilePath: '/tmp/av-concat.txt',
+      fps: 30,
+      totalFrames: 90,
+    });
+
+    spawnStub.resetBehavior();
+    spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
+
+    expect(spawnArgs.indexOf('-fflags')).greaterThan(-1);
+    expect(spawnArgs[spawnArgs.indexOf('-fflags') + 1]).equal('+genpts');
+    expect(spawnArgs.indexOf('-an')).greaterThan(-1);
+    expect(spawnArgs[spawnArgs.indexOf('-avoid_negative_ts') + 1]).equal('make_zero');
   });
 
   it('waitForProcessExit resolves exit code', async function () {
