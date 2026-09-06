@@ -5,6 +5,7 @@ import { resolve as resolvePath, join as joinPath } from 'path';
 import { tmpdir } from 'os';
 import ffmpegPath from 'ffmpeg-static';
 import { defaults } from './config';
+import { TempoEstimate, beatGridFrameIndices } from './beats';
 
 export interface AudioMuxSegment {
   seekSeconds: number;
@@ -426,11 +427,156 @@ const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, mi
   return merged;
 };
 
+/** Minimum time between auto-edit cuts; cuts still land on beats. */
+export const DEFAULT_AUTO_EDIT_MIN_CUT_INTERVAL_SECONDS = 2;
+/** Window after the minimum gap in which the strongest beat is chosen. */
+export const DEFAULT_AUTO_EDIT_MAX_CUT_INTERVAL_SECONDS = 4;
+/** Half a bar of 4/4, used as the minimum gap when tempo is known. */
+export const AUTO_EDIT_MIN_CUT_BEATS = 2;
+/** One bar of 4/4, used as the maximum gap when tempo is known. */
+export const AUTO_EDIT_MAX_CUT_BEATS = 4;
+/** Snap an onset to the tempo grid when it is within this fraction of a beat. */
+export const BEAT_SNAP_TOLERANCE = 0.25;
+
+export const cutIntervalSecondsFromTempo = (bpm: number) => ({
+  minCutIntervalSeconds: AUTO_EDIT_MIN_CUT_BEATS * (60 / bpm),
+  maxCutIntervalSeconds: AUTO_EDIT_MAX_CUT_BEATS * (60 / bpm),
+});
+
+export const snapBeatsToTempoGrid = (
+  beats: Array<{ frameIndex: number; intensity?: number }>,
+  tempo: Pick<TempoEstimate, 'periodFrames' | 'phaseFrame'>,
+  totalFrames: number,
+): Array<{ frameIndex: number; intensity?: number }> => {
+  const period = tempo.periodFrames;
+  if (!(period > 0)) {
+    return beats.slice();
+  }
+  const maxSnap = Math.max(1, period * BEAT_SNAP_TOLERANCE);
+  const merged: Array<{ frameIndex: number; intensity?: number }> = [];
+  const push = (beat: { frameIndex: number; intensity?: number }) => {
+    for (let i = 0; i < merged.length; i++) {
+      if (merged[i].frameIndex === beat.frameIndex) {
+        if ((beat.intensity ?? 0) > (merged[i].intensity ?? 0)) {
+          merged[i] = beat;
+        }
+        return;
+      }
+    }
+    merged.push(beat);
+  };
+  for (const beat of beats) {
+    const n = Math.round((beat.frameIndex - tempo.phaseFrame) / period);
+    const grid = Math.round(tempo.phaseFrame + n * period);
+    const dist = Math.abs(beat.frameIndex - grid);
+    if (dist <= maxSnap && grid > 0 && grid < totalFrames) {
+      push({ frameIndex: grid, intensity: beat.intensity });
+    } else {
+      push(beat);
+    }
+  }
+  return merged.sort((a, b) => a.frameIndex - b.frameIndex);
+};
+
+/** Every BPM-grid beat, with onset intensity copied onto the nearest grid frame. */
+export const projectBeatsOntoTempoGrid = (
+  beats: Array<{ frameIndex: number; intensity?: number }>,
+  tempo: Pick<TempoEstimate, 'periodFrames' | 'phaseFrame'>,
+  totalFrames: number,
+): Array<{ frameIndex: number; intensity?: number }> => {
+  const grid = beatGridFrameIndices(tempo, totalFrames);
+  if (grid.length === 0) {
+    return [];
+  }
+  const period = tempo.periodFrames;
+  const maxSnap = Math.max(1, period * BEAT_SNAP_TOLERANCE);
+  const intensityByFrame = new Map<number, number>();
+  for (const beat of beats) {
+    const n = Math.round((beat.frameIndex - tempo.phaseFrame) / period);
+    const gridFrame = Math.round(tempo.phaseFrame + n * period);
+    if (Math.abs(beat.frameIndex - gridFrame) > maxSnap) {
+      continue;
+    }
+    if (gridFrame <= 0 || gridFrame >= totalFrames) {
+      continue;
+    }
+    const intensity = beat.intensity ?? 0;
+    if (intensity >= (intensityByFrame.get(gridFrame) ?? 0)) {
+      intensityByFrame.set(gridFrame, intensity);
+    }
+  }
+  return grid.map(frameIndex => ({
+    frameIndex,
+    intensity: intensityByFrame.get(frameIndex) ?? 0,
+  }));
+};
+
+export const selectAutoEditCutFrames = (
+  beats: Array<{ frameIndex: number; intensity?: number }>,
+  fps: number,
+  totalFrames: number,
+  minIntervalSeconds = DEFAULT_AUTO_EDIT_MIN_CUT_INTERVAL_SECONDS,
+  maxIntervalSeconds = DEFAULT_AUTO_EDIT_MAX_CUT_INTERVAL_SECONDS,
+): number[] => {
+  const sorted = beats
+    .filter(beat => beat.frameIndex > 0 && beat.frameIndex < totalFrames)
+    .sort((a, b) => a.frameIndex - b.frameIndex);
+  if (sorted.length === 0 || fps <= 0) {
+    return [];
+  }
+  if (minIntervalSeconds <= 0) {
+    return sorted.map(beat => beat.frameIndex);
+  }
+
+  const minGap = Math.max(1, Math.round(fps * minIntervalSeconds));
+  const maxGap = Math.max(minGap, Math.round(fps * maxIntervalSeconds));
+  const selected: number[] = [];
+  let lastCut = 0;
+
+  while (lastCut + minGap < totalFrames) {
+    const windowStart = lastCut + minGap;
+    const windowEnd = Math.min(lastCut + maxGap, totalFrames);
+
+    let best: { frameIndex: number; intensity?: number } | undefined;
+    let nextAfterWindow: { frameIndex: number; intensity?: number } | undefined;
+
+    for (const beat of sorted) {
+      if (beat.frameIndex < windowStart) {
+        continue;
+      }
+      if (beat.frameIndex >= windowEnd) {
+        nextAfterWindow = beat;
+        break;
+      }
+      const intensity = beat.intensity ?? 0;
+      if (!best || intensity > (best.intensity ?? 0)) {
+        best = beat;
+      }
+    }
+
+    const chosen = best ?? nextAfterWindow;
+    if (!chosen) {
+      break;
+    }
+    selected.push(chosen.frameIndex);
+    lastCut = chosen.frameIndex;
+  }
+
+  return selected;
+};
+
 export const buildBeatSyncedSegments = (
   beatFrameIndices: number[],
   totalFrames: number,
   sceneChanges: SceneChange[],
   videoDuration: number,
+  fps: number,
+  options?: {
+    beatIntensities?: number[];
+    minCutIntervalSeconds?: number;
+    maxCutIntervalSeconds?: number;
+    tempo?: TempoEstimate;
+  },
 ): VideoSegment[] => {
   if (sceneChanges.length === 0) {
     return [
@@ -451,7 +597,27 @@ export const buildBeatSyncedSegments = (
     seekPositions = Array.from({ length: count }, (_, i) => (i * videoDuration) / count);
   }
 
-  const boundaries = [0, ...beatFrameIndices];
+  const tempo = options?.tempo;
+  const tempoIntervals = tempo && tempo.bpm > 0
+    ? cutIntervalSecondsFromTempo(tempo.bpm)
+    : undefined;
+  let beats: Array<{ frameIndex: number; intensity?: number }> = beatFrameIndices.map((frameIndex, i) => ({
+    frameIndex,
+    intensity: options?.beatIntensities?.[i],
+  }));
+  if (tempo) {
+    beats = projectBeatsOntoTempoGrid(beats, tempo, totalFrames);
+  }
+
+  const cutBeats = selectAutoEditCutFrames(
+    beats,
+    fps,
+    totalFrames,
+    options?.minCutIntervalSeconds ?? tempoIntervals?.minCutIntervalSeconds,
+    options?.maxCutIntervalSeconds ?? tempoIntervals?.maxCutIntervalSeconds,
+  );
+
+  const boundaries = [0, ...cutBeats];
   if (boundaries[boundaries.length - 1] !== totalFrames) {
     boundaries.push(totalFrames);
   }
@@ -467,6 +633,12 @@ export const buildBeatSyncedSegments = (
   }
   return segments;
 };
+
+export const getCutFrameIndices = (segments: VideoSegment[]): number[] =>
+  segments
+    .slice(1)
+    .map(segment => segment.outputStartFrame)
+    .filter(frameIndex => frameIndex > 0);
 
 export const writeConcatFile = (
   segments: VideoSegment[],

@@ -9,6 +9,9 @@ import {
   convertToBmp,
   mixValues,
   mixColors,
+  applyCameraShake,
+  getCutShakeOffset,
+  buildCutShakeAmplitudes,
 } from '../image';
 import { createBpmEncoder } from '../bpmEncoder';
 
@@ -75,6 +78,89 @@ describe('image', function () {
       opacity: 1
     });
     expect(imageDstBuffer.data).deep.equal(expectedImageData);
+  });
+
+  it('getCutShakeOffset peaks on the cut and decays on the next frames', function () {
+    const cutFrames = new Set([10, 20]);
+    const magnitude = (offset: { x: number; y: number }) => Math.hypot(offset.x, offset.y);
+    expect(getCutShakeOffset(9, cutFrames)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(10, cutFrames))).greaterThan(magnitude(getCutShakeOffset(11, cutFrames)));
+    expect(magnitude(getCutShakeOffset(11, cutFrames))).greaterThan(magnitude(getCutShakeOffset(12, cutFrames)));
+    expect(magnitude(getCutShakeOffset(12, cutFrames))).greaterThan(magnitude(getCutShakeOffset(13, cutFrames)));
+    expect(getCutShakeOffset(15, cutFrames)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(20, cutFrames))).greaterThan(0);
+  });
+
+  it('getCutShakeOffset uses the closer overlapping cut', function () {
+    const cutFrames = new Set([10, 11]);
+    expect(getCutShakeOffset(11, cutFrames)).deep.equal(getCutShakeOffset(11, new Set([11])));
+  });
+
+  it('buildCutShakeAmplitudes lasts about one-third of a beat', function () {
+    const at128 = buildCutShakeAmplitudes(14);
+    expect(at128.length).equal(5);
+    expect(at128[0]).equal(14);
+    expect(at128[at128.length - 1]).equal(1);
+    expect(buildCutShakeAmplitudes(30).length).equal(10);
+    expect(buildCutShakeAmplitudes(6).length).equal(3);
+  });
+
+  it('getCutShakeOffset uses a longer envelope when amplitudes are passed', function () {
+    const cutFrames = new Set([10]);
+    const longAmp = buildCutShakeAmplitudes(30);
+    const magnitude = (offset: { x: number; y: number }) => Math.hypot(offset.x, offset.y);
+    expect(getCutShakeOffset(15, cutFrames)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(15, cutFrames, longAmp))).greaterThan(0);
+    expect(getCutShakeOffset(10 + longAmp.length, cutFrames, longAmp)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(10, cutFrames, longAmp))).greaterThan(
+      magnitude(getCutShakeOffset(12, cutFrames, longAmp)),
+    );
+  });
+
+  it('applyCameraShake shifts pixels and clamps edges', function () {
+    const width = 3;
+    const height = 2;
+    const extraBytes = width % 4;
+    const rowBytes = 3 * width + extraBytes;
+    const shiftPos = 4;
+    const data = Buffer.alloc(shiftPos + height * rowBytes, 0);
+    data[0] = 9;
+    data[1] = 8;
+    data[2] = 7;
+    data[3] = 6;
+    let value = 1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pixelIndex = shiftPos + y * rowBytes + x * 3;
+        data[pixelIndex] = value;
+        data[pixelIndex + 1] = value + 1;
+        data[pixelIndex + 2] = value + 2;
+        value += 3;
+      }
+    }
+
+    applyCameraShake({ shiftPos, rowBytes, data }, width, height, 1, 0);
+
+    expect(data[0]).equal(9);
+    expect(data[1]).equal(8);
+    expect(data[2]).equal(7);
+    expect(data[3]).equal(6);
+    const pixelAt = (x: number, y: number) => {
+      const pixelIndex = shiftPos + y * rowBytes + x * 3;
+      return [data[pixelIndex], data[pixelIndex + 1], data[pixelIndex + 2]];
+    };
+    expect(pixelAt(0, 0)).deep.equal([1, 2, 3]);
+    expect(pixelAt(1, 0)).deep.equal([1, 2, 3]);
+    expect(pixelAt(2, 0)).deep.equal([4, 5, 6]);
+    expect(pixelAt(0, 1)).deep.equal([10, 11, 12]);
+    expect(pixelAt(1, 1)).deep.equal([10, 11, 12]);
+    expect(pixelAt(2, 1)).deep.equal([13, 14, 15]);
+  });
+
+  it('applyCameraShake is a no-op at zero offset', function () {
+    const data = Buffer.from([1, 2, 3, 10, 20, 30]);
+    applyCameraShake({ shiftPos: 3, rowBytes: 3, data }, 1, 1, 0, 0);
+    expect(Array.from(data)).deep.equal([1, 2, 3, 10, 20, 30]);
   });
 
   it('createSpectrumVisualizerFrameGenerator', async function () {

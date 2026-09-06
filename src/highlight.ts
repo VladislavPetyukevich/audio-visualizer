@@ -20,6 +20,7 @@ export interface HighlightRun {
   highlightFrames: number;
   spectrums: number[][];
   beatFrameIndices: number[];
+  beatIntensities: number[];
   audioSegment: HighlightAudioSegment;
 }
 
@@ -31,16 +32,17 @@ function buildHighlightRun(
 ): HighlightRun {
   const { startFrame, highlightFrames } = seg;
   const spectrumsSlice = spectrums.slice(startFrame, startFrame + highlightFrames);
-  const beatFrameIndices = beatEvents
-    .map(b => b.frameIndex)
-    .filter(i => i >= startFrame && i < startFrame + highlightFrames)
-    .map(i => i - startFrame)
-    .sort((a, b) => a - b);
+  const beatsInWindow = beatEvents
+    .filter(b => b.frameIndex >= startFrame && b.frameIndex < startFrame + highlightFrames)
+    .sort((a, b) => a.frameIndex - b.frameIndex);
+  const beatFrameIndices = beatsInWindow.map(b => b.frameIndex - startFrame);
+  const beatIntensities = beatsInWindow.map(b => b.intensity);
   return {
     startFrame,
     highlightFrames,
     spectrums: spectrumsSlice,
     beatFrameIndices,
+    beatIntensities,
     audioSegment: {
       seekSeconds: startFrame / fps,
       durationSeconds: highlightFrames / fps,
@@ -178,6 +180,7 @@ export async function computeHighlightSlice(
   highlightFrames: number;
   spectrums: number[][];
   beatFrameIndices: number[];
+  beatIntensities: number[];
   audioSeekSeconds: number;
   audioDurationSeconds: number;
   audioSegments: HighlightAudioSegment[];
@@ -191,6 +194,7 @@ export async function computeHighlightSlice(
       highlightFrames: 0,
       spectrums: [],
       beatFrameIndices: [],
+      beatIntensities: [],
       audioSeekSeconds: 0,
       audioDurationSeconds: 0,
       audioSegments: [],
@@ -206,15 +210,17 @@ export async function computeHighlightSlice(
       },
     ];
     const fullSeg = { startFrame: 0, highlightFrames: totalFrames };
+    const fullRun = buildHighlightRun(fps, fullSeg, spectrums, beatEvents);
     return {
       startFrame: 0,
       highlightFrames: totalFrames,
       spectrums: spectrums.slice(),
-      beatFrameIndices: beatEvents.map(b => b.frameIndex).sort((a, b) => a - b),
+      beatFrameIndices: fullRun.beatFrameIndices,
+      beatIntensities: fullRun.beatIntensities,
       audioSeekSeconds: 0,
       audioDurationSeconds: totalFrames / fps,
       audioSegments,
-      runs: [buildHighlightRun(fps, fullSeg, spectrums, beatEvents)],
+      runs: [fullRun],
     };
   }
 
@@ -246,22 +252,22 @@ export async function computeHighlightSlice(
 
   const slicedSpectrums: number[][] = [];
   const beatFrameIndices: number[] = [];
+  const beatIntensities: number[] = [];
   let outOffset = 0;
 
   for (const seg of rawSegments) {
     const chunk = spectrums.slice(seg.startFrame, seg.startFrame + seg.highlightFrames);
     slicedSpectrums.push(...chunk);
 
-    for (const b of beatEvents) {
-      const i = b.frameIndex;
-      if (i >= seg.startFrame && i < seg.startFrame + seg.highlightFrames) {
-        beatFrameIndices.push(i - seg.startFrame + outOffset);
-      }
+    const beatsInSeg = beatEvents
+      .filter(b => b.frameIndex >= seg.startFrame && b.frameIndex < seg.startFrame + seg.highlightFrames)
+      .sort((a, b) => a.frameIndex - b.frameIndex);
+    for (const b of beatsInSeg) {
+      beatFrameIndices.push(b.frameIndex - seg.startFrame + outOffset);
+      beatIntensities.push(b.intensity);
     }
     outOffset += seg.highlightFrames;
   }
-
-  beatFrameIndices.sort((a, b) => a - b);
 
   const totalHighlightFrames = slicedSpectrums.length;
   const audioSegments: HighlightAudioSegment[] = rawSegments.map(seg => ({
@@ -276,6 +282,7 @@ export async function computeHighlightSlice(
     highlightFrames: totalHighlightFrames,
     spectrums: slicedSpectrums,
     beatFrameIndices,
+    beatIntensities,
     audioSeekSeconds: first.seekSeconds,
     audioDurationSeconds: first.durationSeconds,
     audioSegments,

@@ -4,6 +4,7 @@ import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 import {
   bufferToUInt8,
   normalizeAudioData,
+  pcmU8ToFloatSamples,
   spawnFfmpegAudioReader,
   skipEvery,
   getPeaks,
@@ -40,6 +41,11 @@ describe('audio', function () {
     const result = normalizeAudioData([4, 5, 23, 78, 2]);
     const expected = [-0.96875, -0.9609375, -0.8203125, -0.390625, -0.984375];
     expect(result).deep.equal(expected);
+  });
+
+  it('pcmU8ToFloatSamples', function () {
+    const buffer = Buffer.from([128, 255, 0]);
+    expect(pcmU8ToFloatSamples(buffer)).deep.equal([0, 127 / 128, -1]);
   });
 
   it('spawnFfmpegAudioReader', function (done) {

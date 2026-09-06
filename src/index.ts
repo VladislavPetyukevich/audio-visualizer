@@ -36,13 +36,13 @@ import {
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
 } from './config';
-import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor } from './audio';
-import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps } from './image';
+import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor, pcmU8ToFloatSamples } from './audio';
+import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes, CAMERA_SHAKE_EVERY_BEATS } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
-import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
+import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { createBeatDetector } from './beats';
-export { BeatInfo, BeatDetectorOptions } from './beats';
+import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, tempoForWindow, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
+export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
 export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun } from './highlight';
@@ -266,11 +266,13 @@ async function prepareBackgroundForRender(params: {
   backgroundVideoPath: string | undefined;
   backgroundImagePath: string | undefined;
   beatFrameIndices: number[];
+  beatIntensities?: number[];
   framesCount: number;
   outputResolution: ReturnType<typeof getOutputResolution>;
   fps: number;
   autoEditVideo: boolean;
   readVideoFrameTimeout: number;
+  tempo?: TempoEstimate | null;
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -280,17 +282,20 @@ async function prepareBackgroundForRender(params: {
   videoFrameSize: number;
   encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
   concatFilePath?: string;
+  cutFrameIndices: number[];
 }> {
   const {
     useVideoBackground,
     backgroundVideoPath,
     backgroundImagePath,
     beatFrameIndices,
+    beatIntensities,
     framesCount,
     outputResolution,
     fps,
     autoEditVideo,
     readVideoFrameTimeout,
+    tempo,
   } = params;
 
   if (useVideoBackground && backgroundVideoPath) {
@@ -309,9 +314,15 @@ async function prepareBackgroundForRender(params: {
       framesCount,
       sceneChanges,
       videoInfo.duration,
+      fps,
+      {
+        beatIntensities,
+        ...(autoEditVideo && tempo ? { tempo } : {}),
+      },
     );
 
     const concatFilePath = writeConcatFile(segments, backgroundVideoPath, videoInfo.duration, fps);
+    const cutFrameIndices = autoEditVideo ? getCutFrameIndices(segments) : [];
 
     const videoFrameReader = spawnConcatVideoFrameReader({
       concatFilePath,
@@ -344,6 +355,7 @@ async function prepareBackgroundForRender(params: {
       videoFrameSize,
       encodeVideoFrame,
       concatFilePath,
+      cutFrameIndices,
     };
   }
 
@@ -368,6 +380,7 @@ async function prepareBackgroundForRender(params: {
     defaultColor,
     staticBackgroundBuffer,
     videoFrameSize: 0,
+    cutFrameIndices: [],
   };
 }
 
@@ -502,6 +515,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const autoHighlight = getAudioAutoHighlight(config);
     let spectrumsForRender = preprocessed.spectrums;
     let beatIndicesForRender = preprocessed.beatFrameIndices;
+    let beatIntensitiesForRender = preprocessed.beatEvents.map(event => event.intensity);
     let framesCountForRender = framesCount;
     type HighlightSliceResult = ReturnType<typeof computeHighlightSlice> extends Promise<
       infer R
@@ -521,10 +535,22 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       );
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;
+      beatIntensitiesForRender = highlightSlice.beatIntensities;
       framesCountForRender = highlightSlice.highlightFrames;
       reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
     } else {
       reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
+    }
+
+    const autoEditVideo = getAutoEditVideo(config);
+    let trackTempo: TempoEstimate | null = null;
+    if (autoEditVideo) {
+      const sampleRateNum = Number(sampleRate);
+      const maxSamples = Math.floor(sampleRateNum * MAX_TEMPO_ANALYSIS_SECONDS);
+      const tempoBuffer = audioBuffer.length > maxSamples
+        ? audioBuffer.slice(0, maxSamples)
+        : audioBuffer;
+      trackTempo = estimateTempo(pcmU8ToFloatSamples(tempoBuffer), sampleRateNum, FPS);
     }
 
     const separateHighlightFiles =
@@ -536,7 +562,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       outPath: string;
       spectrums: number[][];
       beatIndices: number[];
+      beatIntensities: number[];
       frameCount: number;
+      startFrame: number;
       audioSegment: import('./highlight').HighlightAudioSegment | undefined;
     };
 
@@ -551,7 +579,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             outPath: numberedPath,
             spectrums: run.spectrums,
             beatIndices: run.beatFrameIndices,
+            beatIntensities: run.beatIntensities,
             frameCount: run.highlightFrames,
+            startFrame: run.startFrame,
             audioSegment: run.audioSegment,
           };
         })
@@ -560,7 +590,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             outPath: outVideoPath,
             spectrums: spectrumsForRender,
             beatIndices: beatIndicesForRender,
+            beatIntensities: beatIntensitiesForRender,
             frameCount: framesCountForRender,
+            startFrame: highlightSlice?.startFrame ?? 0,
             audioSegment:
               autoHighlight &&
               highlightSlice &&
@@ -587,6 +619,12 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const outputVideoFiles: string[] = [];
     try {
       passLoop: for (const pass of passes) {
+        const tempo = trackTempo
+          ? tempoForWindow(trackTempo, pass.startFrame, FPS, pass.frameCount, pass.beatIndices)
+          : null;
+        const shakeAmplitudes = tempo
+          ? buildCutShakeAmplitudes(tempo.periodFrames)
+          : undefined;
         const {
           backgroundWidth,
           backgroundHeight,
@@ -601,14 +639,23 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           backgroundVideoPath,
           backgroundImagePath,
           beatFrameIndices: pass.beatIndices,
+          beatIntensities: pass.beatIntensities,
           framesCount: pass.frameCount,
           outputResolution,
           fps: FPS,
-          autoEditVideo: getAutoEditVideo(config),
+          autoEditVideo,
           readVideoFrameTimeout: videoTimeouts.readVideoFrame,
+          ...(tempo ? { tempo } : {}),
         });
         reportRenderProgress();
 
+        const shakeFrames = new Set(
+          autoEditVideo
+            ? (tempo
+              ? beatGridFrameIndices(tempo, pass.frameCount, CAMERA_SHAKE_EVERY_BEATS)
+              : pass.beatIndices.filter(frameIndex => frameIndex > 0).filter((_, i) => i % CAMERA_SHAKE_EVERY_BEATS === 0))
+            : [],
+        );
         const createVisualizerFrame = createVisualizerFrameGenerator(
           config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
         );
@@ -648,6 +695,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrum,
           };
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
+          const shakeOffset = getCutShakeOffset(i, shakeFrames, shakeAmplitudes);
+          if (shakeOffset.x !== 0 || shakeOffset.y !== 0) {
+            applyCameraShake(frameImage, backgroundWidth, backgroundHeight, shakeOffset.x, shakeOffset.y);
+          }
           const isFrameProcessed = ffmpegVideoWriter.stdin.write(frameImage.data);
           if (!isFrameProcessed) {
             const isDrained = await waitDrain(
