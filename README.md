@@ -11,8 +11,9 @@ const config = {
   },
   // OR use a video as background (optional):
   // video: {
-  //   path: 'media/background.mp4', // Supports MP4, MOV, AVI, MKV. Loops automatically if shorter than audio.
-  //   autoEdit: true, // Optional. Detects scene cuts and advances between them on the detected BPM beat grid about every 2–4 beats so the background edits with the music; omit or false for one continuous play-through from the start. When enabled, a brief camera shake every second beat decays over about one-third of a beat.
+  //   path: 'media/background.mp4', // Supports MP4, MOV, AVI, MKV. Loops automatically if shorter than audio. Can also be an array of paths, e.g. ['media/bg1.mp4', 'media/bg2.mp4']: with autoEdit false the videos play one after another (looping the sequence as needed), and with autoHighlight producing several videos each one starts with a different video from the array; with autoEdit true, cuts switch (shuffle) between the given videos instead of auto-detecting scene changes. Videos in an array should share the same resolution and frame rate for best results, especially when outVideo.resolution is not set.
+  //   autoEdit: true, // Optional. Detects scene cuts and advances between them on the detected BPM beat grid about every 2–4 beats so the background edits with the music; omit or false for one continuous play-through from the start. When enabled, a brief camera shake starts 0.1s after each cut and decays over about one-third of a beat (if the video has no detected scene changes, and so no cuts, it shakes every 2 beats instead).
+  //   cameraShake: false, // Optional. With autoEdit: set to false to disable the camera shake applied on cuts (default true).
   // },
   audio: {
     path: 'media/audio.wav', // Supports MP3 and WAV audio

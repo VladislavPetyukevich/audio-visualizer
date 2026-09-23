@@ -73,11 +73,22 @@ export const getAudioAutoHighlightCount = (config: Config): number => {
 export const getBackgroundImagePath = (config: Config) =>
   config.image ? path.resolve(config.image.path) : undefined;
 
-export const getBackgroundVideoPath = (config: Config) =>
-  config.video ? path.resolve(config.video.path) : undefined;
+export const getBackgroundVideoPaths = (config: Config): string[] | undefined => {
+  if (!config.video) {
+    return undefined;
+  }
+  const rawPaths = Array.isArray(config.video.path) ? config.video.path : [config.video.path];
+  if (rawPaths.length === 0) {
+    throw new Error('Invalid video.path: array must not be empty.');
+  }
+  return rawPaths.map(rawPath => path.resolve(rawPath));
+};
 
 export const getAutoEditVideo = (config: Config) =>
   config.video?.autoEdit === true;
+
+export const getCameraShakeEnabled = (config: Config) =>
+  config.video?.cameraShake !== false;
 
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);

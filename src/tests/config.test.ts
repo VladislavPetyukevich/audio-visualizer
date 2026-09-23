@@ -7,6 +7,8 @@ import {
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
   getBackgroundImagePath,
+  getBackgroundVideoPaths,
+  getCameraShakeEnabled,
   getOutVideoPath,
   getSubtitleRenderSpec,
   subtitleAlignmentToAss,
@@ -71,6 +73,42 @@ describe('config', function() {
     } as Config);
     const expected = path.resolve('test/path');
     expect(result).equal(expected);
+  });
+
+  it('getBackgroundVideoPaths', function() {
+    expect(
+      getBackgroundVideoPaths({ audio: { path: 'a.wav' } } as Config)
+    ).equal(undefined);
+
+    expect(
+      getBackgroundVideoPaths({ video: { path: 'test/path' } } as Config)
+    ).deep.equal([path.resolve('test/path')]);
+
+    expect(
+      getBackgroundVideoPaths({ video: { path: ['a.mp4', 'b.mp4'] } } as Config)
+    ).deep.equal([path.resolve('a.mp4'), path.resolve('b.mp4')]);
+
+    expect(
+      getBackgroundVideoPaths.bind(undefined, { video: { path: [] } } as unknown as Config)
+    ).to.throw('Invalid video.path');
+  });
+
+  it('getCameraShakeEnabled', function() {
+    expect(
+      getCameraShakeEnabled({ audio: { path: 'a.wav' } } as Config)
+    ).equal(true);
+
+    expect(
+      getCameraShakeEnabled({ video: { path: 'test/path' } } as Config)
+    ).equal(true);
+
+    expect(
+      getCameraShakeEnabled({ video: { path: 'test/path', cameraShake: true } } as Config)
+    ).equal(true);
+
+    expect(
+      getCameraShakeEnabled({ video: { path: 'test/path', cameraShake: false } } as Config)
+    ).equal(false);
   });
 
   it('getOutVideoPath', function() {

@@ -408,6 +408,8 @@ export interface VideoSegment {
   outputStartFrame: number;
   videoSeekSeconds: number;
   frameCount: number;
+  /** Index into the background video sources array; defaults to 0 when omitted. */
+  videoIndex?: number;
 }
 
 const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, minDuration = 2): SceneChange[] => {
@@ -565,6 +567,156 @@ export const selectAutoEditCutFrames = (
   return selected;
 };
 
+const computeAutoEditCutBoundaries = (
+  beatFrameIndices: number[],
+  totalFrames: number,
+  fps: number,
+  options?: {
+    beatIntensities?: number[];
+    minCutIntervalSeconds?: number;
+    maxCutIntervalSeconds?: number;
+    tempo?: TempoEstimate;
+  },
+): number[] => {
+  const tempo = options?.tempo;
+  const tempoIntervals = tempo && tempo.bpm > 0
+    ? cutIntervalSecondsFromTempo(tempo.bpm)
+    : undefined;
+  let beats: Array<{ frameIndex: number; intensity?: number }> = beatFrameIndices.map((frameIndex, i) => ({
+    frameIndex,
+    intensity: options?.beatIntensities?.[i],
+  }));
+  if (tempo) {
+    beats = projectBeatsOntoTempoGrid(beats, tempo, totalFrames);
+  }
+
+  const cutBeats = selectAutoEditCutFrames(
+    beats,
+    fps,
+    totalFrames,
+    options?.minCutIntervalSeconds ?? tempoIntervals?.minCutIntervalSeconds,
+    options?.maxCutIntervalSeconds ?? tempoIntervals?.maxCutIntervalSeconds,
+  );
+
+  const boundaries = [0, ...cutBeats];
+  if (boundaries[boundaries.length - 1] !== totalFrames) {
+    boundaries.push(totalFrames);
+  }
+  return Array.from(new Set(boundaries)).sort((a, b) => a - b);
+};
+
+/**
+ * Splits `totalFrames` into segments that cycle through `videoDurations` in order, each
+ * segment playing one source video from the start. Used for `video.path` arrays with
+ * `autoEdit` disabled, so the given videos play one after another (looping the sequence).
+ * `startVideoIndex` rotates which video plays first (e.g. so separate auto-highlight outputs
+ * each open with a different video).
+ */
+export const buildSequentialVideoSegments = (
+  totalFrames: number,
+  videoDurations: number[],
+  fps: number,
+  startVideoIndex = 0,
+): VideoSegment[] => {
+  if (videoDurations.length === 0 || totalFrames <= 0 || fps <= 0) {
+    return [];
+  }
+  const segments: VideoSegment[] = [];
+  let framesRemaining = totalFrames;
+  let outputStartFrame = 0;
+  let cycleIndex = 0;
+  const maxIterations = videoDurations.length * 100000;
+  let iterations = 0;
+  while (framesRemaining > 0 && iterations < maxIterations) {
+    iterations += 1;
+    const videoIndex = (startVideoIndex + cycleIndex) % videoDurations.length;
+    const videoFrames = Math.max(1, Math.round(videoDurations[videoIndex] * fps));
+    const frameCount = Math.min(videoFrames, framesRemaining);
+    segments.push({
+      outputStartFrame,
+      videoSeekSeconds: 0,
+      frameCount,
+      videoIndex,
+    });
+    outputStartFrame += frameCount;
+    framesRemaining -= frameCount;
+    cycleIndex += 1;
+  }
+  return segments;
+};
+
+/**
+ * Fisher-Yates shuffle of `[0, videoCount)`, optionally reshuffling the first slot so it
+ * doesn't repeat `avoidFirst` (used to avoid a repeat across bag boundaries).
+ */
+const shuffleVideoIndices = (
+  videoCount: number,
+  random: () => number,
+  avoidFirst?: number,
+): number[] => {
+  const order = Array.from({ length: videoCount }, (_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  if (avoidFirst !== undefined && order.length > 1 && order[0] === avoidFirst) {
+    const swapWith = 1 + Math.floor(random() * (order.length - 1));
+    [order[0], order[swapWith]] = [order[swapWith], order[0]];
+  }
+  return order;
+};
+
+/**
+ * Builds auto-edit cut segments like `buildBeatSyncedSegments`, but instead of switching
+ * between detected scenes within a single video, each segment is assigned a video from
+ * `videoCount` sources. Videos are picked by shuffling the full set into a "bag" and cycling
+ * through it (reshuffling once exhausted), rather than picking uniformly at random each time,
+ * so every video plays about as often as the others instead of some clumping together while
+ * others go unpicked for long stretches. The same video never plays twice in a row, including
+ * across a reshuffle.
+ */
+export const buildShuffledVideoSegments = (
+  beatFrameIndices: number[],
+  totalFrames: number,
+  videoCount: number,
+  fps: number,
+  options?: {
+    beatIntensities?: number[];
+    minCutIntervalSeconds?: number;
+    maxCutIntervalSeconds?: number;
+    tempo?: TempoEstimate;
+    randomFn?: () => number;
+  },
+): VideoSegment[] => {
+  if (videoCount <= 0 || totalFrames <= 0) {
+    return [];
+  }
+  if (videoCount === 1) {
+    return [{ outputStartFrame: 0, videoSeekSeconds: 0, frameCount: totalFrames, videoIndex: 0 }];
+  }
+
+  const boundaries = computeAutoEditCutBoundaries(beatFrameIndices, totalFrames, fps, options);
+  const random = options?.randomFn ?? Math.random;
+
+  const segments: VideoSegment[] = [];
+  let bag: number[] = [];
+  let previousVideoIndex: number | undefined;
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    if (bag.length === 0) {
+      bag = shuffleVideoIndices(videoCount, random, previousVideoIndex);
+    }
+    const videoIndex = bag.shift() as number;
+    previousVideoIndex = videoIndex;
+    segments.push({
+      outputStartFrame: boundaries[i],
+      videoSeekSeconds: 0,
+      frameCount: boundaries[i + 1] - boundaries[i],
+      videoIndex,
+    });
+  }
+  return segments;
+};
+
 export const buildBeatSyncedSegments = (
   beatFrameIndices: number[],
   totalFrames: number,
@@ -597,31 +749,7 @@ export const buildBeatSyncedSegments = (
     seekPositions = Array.from({ length: count }, (_, i) => (i * videoDuration) / count);
   }
 
-  const tempo = options?.tempo;
-  const tempoIntervals = tempo && tempo.bpm > 0
-    ? cutIntervalSecondsFromTempo(tempo.bpm)
-    : undefined;
-  let beats: Array<{ frameIndex: number; intensity?: number }> = beatFrameIndices.map((frameIndex, i) => ({
-    frameIndex,
-    intensity: options?.beatIntensities?.[i],
-  }));
-  if (tempo) {
-    beats = projectBeatsOntoTempoGrid(beats, tempo, totalFrames);
-  }
-
-  const cutBeats = selectAutoEditCutFrames(
-    beats,
-    fps,
-    totalFrames,
-    options?.minCutIntervalSeconds ?? tempoIntervals?.minCutIntervalSeconds,
-    options?.maxCutIntervalSeconds ?? tempoIntervals?.maxCutIntervalSeconds,
-  );
-
-  const boundaries = [0, ...cutBeats];
-  if (boundaries[boundaries.length - 1] !== totalFrames) {
-    boundaries.push(totalFrames);
-  }
-  const unique = Array.from(new Set(boundaries)).sort((a, b) => a - b);
+  const unique = computeAutoEditCutBoundaries(beatFrameIndices, totalFrames, fps, options);
 
   const segments: VideoSegment[] = [];
   for (let i = 0; i < unique.length - 1; i++) {
@@ -640,23 +768,29 @@ export const getCutFrameIndices = (segments: VideoSegment[]): number[] =>
     .map(segment => segment.outputStartFrame)
     .filter(frameIndex => frameIndex > 0);
 
+export interface VideoSourceInfo {
+  path: string;
+  duration: number;
+}
+
 export const writeConcatFile = (
   segments: VideoSegment[],
-  videoPath: string,
-  videoDuration: number,
+  videoSources: VideoSourceInfo[],
   fps: number,
 ): string => {
-  const absVideoPath = resolvePath(videoPath).replace(/\\/g, '/');
-  const escaped = absVideoPath.replace(/'/g, "'\\''");
   let content = '';
 
   for (const seg of segments) {
+    const source = videoSources[seg.videoIndex ?? 0];
+    const absVideoPath = resolvePath(source.path).replace(/\\/g, '/');
+    const escaped = absVideoPath.replace(/'/g, "'\\''");
+    const videoDuration = source.duration;
     const segDuration = seg.frameCount / fps;
     let remaining = segDuration;
-    let pos = seg.videoSeekSeconds % videoDuration;
+    let pos = videoDuration > 0 ? seg.videoSeekSeconds % videoDuration : 0;
 
     while (remaining > 0.001) {
-      const available = videoDuration - pos;
+      const available = videoDuration > 0 ? videoDuration - pos : remaining;
       const take = Math.min(remaining, available);
       content += `file '${escaped}'\n`;
       content += `inpoint ${pos.toFixed(6)}\n`;

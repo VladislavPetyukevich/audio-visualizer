@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid, projectBeatsOntoTempoGrid, spawnConcatVideoFrameReader } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid, projectBeatsOntoTempoGrid, spawnConcatVideoFrameReader } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -443,5 +443,93 @@ describe('video', function () {
       },
     );
     expect(getCutFrameIndices(segments)).deep.equal([60, 120]);
+  });
+
+  it('buildSequentialVideoSegments cycles through videos one after another', function () {
+    const segments = buildSequentialVideoSegments(100, [2, 3], 10);
+    expect(segments).deep.equal([
+      { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: 20, videoIndex: 0 },
+      { outputStartFrame: 20, videoSeekSeconds: 0, frameCount: 30, videoIndex: 1 },
+      { outputStartFrame: 50, videoSeekSeconds: 0, frameCount: 20, videoIndex: 0 },
+      { outputStartFrame: 70, videoSeekSeconds: 0, frameCount: 30, videoIndex: 1 },
+    ]);
+  });
+
+  it('buildSequentialVideoSegments trims the final segment to fit the remaining frames', function () {
+    const segments = buildSequentialVideoSegments(45, [2, 3], 10);
+    expect(segments).deep.equal([
+      { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: 20, videoIndex: 0 },
+      { outputStartFrame: 20, videoSeekSeconds: 0, frameCount: 25, videoIndex: 1 },
+    ]);
+  });
+
+  it('buildSequentialVideoSegments starts from the given video index', function () {
+    const segments = buildSequentialVideoSegments(80, [2, 3, 1], 10, 1);
+    expect(segments).deep.equal([
+      { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: 30, videoIndex: 1 },
+      { outputStartFrame: 30, videoSeekSeconds: 0, frameCount: 10, videoIndex: 2 },
+      { outputStartFrame: 40, videoSeekSeconds: 0, frameCount: 20, videoIndex: 0 },
+      { outputStartFrame: 60, videoSeekSeconds: 0, frameCount: 20, videoIndex: 1 },
+    ]);
+  });
+
+  it('buildSequentialVideoSegments returns empty for no video durations', function () {
+    expect(buildSequentialVideoSegments(100, [], 10)).deep.equal([]);
+  });
+
+  it('buildShuffledVideoSegments assigns a single video when only one is given', function () {
+    const segments = buildShuffledVideoSegments([10, 20], 30, 1, 30);
+    expect(segments).deep.equal([
+      { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: 30, videoIndex: 0 },
+    ]);
+  });
+
+  it('buildShuffledVideoSegments cuts on the beat grid and never repeats the same video twice in a row', function () {
+    const fps = 30;
+    const bpm = 90;
+    const periodFrames = fps * 60 / bpm;
+    const segments = buildShuffledVideoSegments(
+      [20, 40, 60, 80, 100, 120, 140, 160],
+      200,
+      3,
+      fps,
+      { tempo: { bpm, periodFrames, phaseFrame: 0 }, randomFn: () => 0 },
+    );
+    expect(getCutFrameIndices(segments)).deep.equal([40, 80, 120, 160]);
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i].videoIndex).not.equal(segments[i - 1].videoIndex);
+    }
+    for (const segment of segments) {
+      expect(segment.videoIndex).gte(0);
+      expect(segment.videoIndex).lessThan(3);
+    }
+  });
+
+  it('buildShuffledVideoSegments cycles through a shuffled bag of every video instead of picking uniformly at random', function () {
+    const fps = 30;
+    const videoCount = 4;
+    const beatFrameIndices = Array.from({ length: 15 }, (_, i) => (i + 1) * 10);
+    // Simple seeded PRNG so the shuffle order is deterministic but not degenerate like `() => 0`.
+    let seed = 42;
+    const randomFn = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const segments = buildShuffledVideoSegments(
+      beatFrameIndices,
+      200,
+      videoCount,
+      fps,
+      { minCutIntervalSeconds: 0, randomFn },
+    );
+    expect(segments.length).equal(16);
+
+    for (let i = 0; i < segments.length; i += videoCount) {
+      const bag = segments.slice(i, i + videoCount).map(segment => segment.videoIndex);
+      expect(bag.slice().sort()).deep.equal([0, 1, 2, 3]);
+    }
+    for (let i = 1; i < segments.length; i++) {
+      expect(segments[i].videoIndex).not.equal(segments[i - 1].videoIndex);
+    }
   });
 });

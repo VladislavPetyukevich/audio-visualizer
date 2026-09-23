@@ -598,7 +598,12 @@ export const CUT_SHAKE_AMPLITUDE_BY_OFFSET = [14, 9, 5, 3, 1] as const;
 export const CUT_SHAKE_PEAK_AMPLITUDE = 14;
 export const MIN_CUT_SHAKE_FRAMES = 3;
 export const SHAKE_DURATION_BEAT_FRACTION = 1 / 3;
-/** Camera shake fires on every Nth beat of the tempo grid (half a bar of 4/4). */
+/** Camera shake starts this many seconds after the cut instead of on the cut frame. */
+export const CAMERA_SHAKE_DELAY_SECONDS = 0.1;
+/**
+ * When auto-edit produces no cuts (e.g. a single continuous-shot video with no detected
+ * scene changes), camera shake falls back to every Nth beat of the tempo grid instead.
+ */
 export const CAMERA_SHAKE_EVERY_BEATS = 2;
 
 export const buildCutShakeAmplitudes = (periodFrames: number): number[] => {
@@ -635,14 +640,16 @@ export const getCutShakeOffset = (
   frameIndex: number,
   cutFrames: ReadonlySet<number>,
   amplitudes: ReadonlyArray<number> = CUT_SHAKE_AMPLITUDE_BY_OFFSET,
+  delayFrames = 0,
 ): { x: number; y: number } => {
   if (amplitudes.length === 0) {
     return { x: 0, y: 0 };
   }
+  const delayedFrameIndex = frameIndex - delayFrames;
   let framesAfterCut = -1;
   let originCut = -1;
   for (let offset = 0; offset < amplitudes.length; offset++) {
-    const cut = frameIndex - offset;
+    const cut = delayedFrameIndex - offset;
     if (cutFrames.has(cut) && (framesAfterCut === -1 || offset < framesAfterCut)) {
       framesAfterCut = offset;
       originCut = cut;

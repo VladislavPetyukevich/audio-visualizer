@@ -12,6 +12,7 @@ import {
   applyCameraShake,
   getCutShakeOffset,
   buildCutShakeAmplitudes,
+  CUT_SHAKE_AMPLITUDE_BY_OFFSET,
 } from '../image';
 import { createBpmEncoder } from '../bpmEncoder';
 
@@ -114,6 +115,16 @@ describe('image', function () {
     expect(getCutShakeOffset(10 + longAmp.length, cutFrames, longAmp)).deep.equal({ x: 0, y: 0 });
     expect(magnitude(getCutShakeOffset(10, cutFrames, longAmp))).greaterThan(
       magnitude(getCutShakeOffset(12, cutFrames, longAmp)),
+    );
+  });
+
+  it('getCutShakeOffset delays the shake start by delayFrames', function () {
+    const cutFrames = new Set([10]);
+    const magnitude = (offset: { x: number; y: number }) => Math.hypot(offset.x, offset.y);
+    expect(getCutShakeOffset(10, cutFrames, CUT_SHAKE_AMPLITUDE_BY_OFFSET, 9)).deep.equal({ x: 0, y: 0 });
+    expect(magnitude(getCutShakeOffset(19, cutFrames, CUT_SHAKE_AMPLITUDE_BY_OFFSET, 9))).greaterThan(0);
+    expect(getCutShakeOffset(19, cutFrames, CUT_SHAKE_AMPLITUDE_BY_OFFSET, 9)).deep.equal(
+      getCutShakeOffset(10, cutFrames, CUT_SHAKE_AMPLITUDE_BY_OFFSET),
     );
   });
 
