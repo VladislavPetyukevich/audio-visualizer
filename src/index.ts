@@ -46,7 +46,7 @@ import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices,
 export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
-export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun } from './highlight';
+export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, MAX_BEAT_SNAP_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun, HighlightBeatGrid } from './highlight';
 
 export const PCM_FORMAT = {
   bit: 8,
@@ -60,7 +60,7 @@ export interface Config {
   audio: {
     path: string;
     autoHighlight?: boolean;
-    /** When `autoHighlight` is true, number of non-overlapping 15s windows to stitch (default 1). */
+    /** When `autoHighlight` is true, number of non-overlapping ~15s beat-aligned windows to stitch (default 1). */
     autoHighlightCount?: number;
   };
   image?: {
@@ -548,6 +548,17 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     reportProgress(PRE_PROCESS_PROGRESS_SHARE);
 
     const autoHighlight = getAudioAutoHighlight(config);
+    const autoEditVideo = getAutoEditVideo(config);
+    // Beat grid for video cuts (autoEdit) and for snapping highlight boundaries to beats.
+    let trackTempo: TempoEstimate | null = null;
+    if (autoEditVideo || autoHighlight) {
+      const sampleRateNum = Number(sampleRate);
+      const maxSamples = Math.floor(sampleRateNum * MAX_TEMPO_ANALYSIS_SECONDS);
+      const tempoBuffer = audioBuffer.length > maxSamples
+        ? audioBuffer.slice(0, maxSamples)
+        : audioBuffer;
+      trackTempo = estimateTempo(pcmU8ToFloatSamples(tempoBuffer), sampleRateNum, FPS);
+    }
     let spectrumsForRender = preprocessed.spectrums;
     let beatIndicesForRender = preprocessed.beatFrameIndices;
     let beatIntensitiesForRender = preprocessed.beatEvents.map(event => event.intensity);
@@ -567,6 +578,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         preprocessed.spectrums,
         preprocessed.beatEvents,
         getAudioAutoHighlightCount(config),
+        trackTempo,
       );
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;
@@ -577,18 +589,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       reportProgress(PRE_PROCESS_PROGRESS_SHARE + POST_AUDIO_PROGRESS_SHARE);
     }
 
-    const autoEditVideo = getAutoEditVideo(config);
     const cameraShakeEnabled = getCameraShakeEnabled(config);
     const shakeDelayFrames = Math.round(FPS * CAMERA_SHAKE_DELAY_SECONDS);
-    let trackTempo: TempoEstimate | null = null;
-    if (autoEditVideo) {
-      const sampleRateNum = Number(sampleRate);
-      const maxSamples = Math.floor(sampleRateNum * MAX_TEMPO_ANALYSIS_SECONDS);
-      const tempoBuffer = audioBuffer.length > maxSamples
-        ? audioBuffer.slice(0, maxSamples)
-        : audioBuffer;
-      trackTempo = estimateTempo(pcmU8ToFloatSamples(tempoBuffer), sampleRateNum, FPS);
-    }
 
     const separateHighlightFiles =
       autoHighlight &&
@@ -657,7 +659,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     try {
       passLoop: for (let passIndex = 0; passIndex < passes.length; passIndex++) {
         const pass = passes[passIndex];
-        const tempo = trackTempo
+        const tempo = autoEditVideo && trackTempo
           ? tempoForWindow(trackTempo, pass.startFrame, FPS, pass.frameCount, pass.beatIndices)
           : null;
         const shakeAmplitudes = tempo

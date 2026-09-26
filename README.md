@@ -17,8 +17,8 @@ const config = {
   // },
   audio: {
     path: 'media/audio.wav', // Supports MP3 and WAV audio
-    autoHighlight: true,
-    autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping 15s windows with the highest summed spectral energy to aim for (default 1; must be a whole number ≥ 1). You may get fewer videos if the track is too short or does not have that many valid windows. More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
+    autoHighlight: true, // Optional. Cuts the most energetic ~15s of the track. Start and end are moved onto beats (by up to 1.5s each), preferring a length of whole 4-beat bars, so the highlight may run slightly shorter or longer than 15s.
+    autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping ~15s windows with the highest summed spectral energy to aim for (default 1; must be a whole number ≥ 1). You may get fewer videos if the track is too short or does not have that many valid windows. More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
   },
   outVideo: {
     path: 'media/out.mp4',

@@ -9,6 +9,26 @@ export interface BeatFrameEvent {
   intensity: number;
 }
 
+/**
+ * How far (seconds) a highlight boundary may move to land on a beat. The final length can
+ * therefore differ from `HIGHLIGHT_DURATION_SEC` by up to twice this value.
+ */
+export const MAX_BEAT_SNAP_SEC = 1.5;
+/** Beats per bar used when preferring highlight lengths made of whole bars. */
+const BEATS_PER_BAR = 4;
+/** Cost (in beats of boundary shift) for each beat the length is away from a whole bar. */
+const OFF_BAR_PENALTY = 3;
+/** Grid beats past the analyzed tempo region snap to a detected onset within this share of a beat. */
+const GRID_ONSET_SNAP_SHARE = 0.2;
+
+/** Tempo grid used to snap highlight cuts to beats (subset of `TempoEstimate`). */
+export interface HighlightBeatGrid {
+  periodFrames: number;
+  phaseFrame: number;
+  /** Beat times in seconds from the start of the audio. */
+  beatsSec?: number[];
+}
+
 export interface HighlightAudioSegment {
   seekSeconds: number;
   durationSeconds: number;
@@ -164,10 +184,136 @@ async function findBestHighlightStart(
   return bestStart;
 }
 
+function nearestOnset(sortedOnsets: number[], frame: number): number | null {
+  let lo = 0;
+  let hi = sortedOnsets.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (sortedOnsets[mid] < frame) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  let best: number | null = null;
+  for (const i of [lo - 1, lo]) {
+    if (i >= 0 && i < sortedOnsets.length) {
+      const v = sortedOnsets[i];
+      if (best === null || Math.abs(v - frame) < Math.abs(best - frame)) {
+        best = v;
+      }
+    }
+  }
+  return best;
+}
 
 /**
- * Picks up to `segmentCount` non-overlapping 15s windows with highest summed spectral energy each,
- * sorts them chronologically, concatenates spectrums, and remaps beat indices.
+ * Beat frames (sorted, unique, within [0, totalFrames]) where a highlight may start or end.
+ * With a tempo grid: tracked beats from the analyzed region, then the regular grid beyond it
+ * (each grid beat nudged onto a nearby detected onset to follow slight tempo drift).
+ * Without one: the detected onset beats.
+ */
+export function buildBeatCandidates(
+  fps: number,
+  totalFrames: number,
+  beatEvents: BeatFrameEvent[],
+  beatGrid?: HighlightBeatGrid | null,
+): number[] {
+  const onsets = Array.from(new Set(beatEvents.map(b => b.frameIndex)))
+    .filter(f => f >= 0 && f <= totalFrames)
+    .sort((a, b) => a - b);
+  const period = beatGrid?.periodFrames ?? 0;
+  if (!beatGrid || !(period > 0) || !isFinite(period)) {
+    return onsets;
+  }
+
+  const frames = new Set<number>();
+  let lastTracked = -Infinity;
+  for (const t of beatGrid.beatsSec ?? []) {
+    const f = Math.round(t * fps);
+    if (f >= 0 && f <= totalFrames) {
+      frames.add(f);
+      lastTracked = Math.max(lastTracked, f);
+    }
+  }
+
+  const maxOnsetShift = period * GRID_ONSET_SNAP_SHARE;
+  const firstN = Math.ceil(-beatGrid.phaseFrame / period);
+  for (let n = firstN; ; n++) {
+    const gridFrame = beatGrid.phaseFrame + n * period;
+    if (gridFrame > totalFrames) {
+      break;
+    }
+    if (gridFrame <= lastTracked + period / 2) {
+      continue;
+    }
+    const onset = nearestOnset(onsets, gridFrame);
+    const f = onset !== null && Math.abs(onset - gridFrame) <= maxOnsetShift
+      ? onset
+      : Math.round(gridFrame);
+    if (f >= 0 && f <= totalFrames) {
+      frames.add(f);
+    }
+  }
+  return Array.from(frames).sort((a, b) => a - b);
+}
+
+/**
+ * Moves a fixed-length window's start and end onto beats (each by at most `maxShiftFrames`),
+ * preferring lengths that span whole bars when the beat period is known.
+ * Boundaries without a nearby beat stay where they are.
+ */
+export function snapSegmentToBeats(
+  seg: { startFrame: number; highlightFrames: number },
+  totalFrames: number,
+  beatFrames: number[],
+  maxShiftFrames: number,
+  periodFrames?: number,
+): { startFrame: number; highlightFrames: number } {
+  const rawStart = seg.startFrame;
+  const rawEnd = seg.startFrame + seg.highlightFrames;
+  const near = (target: number, max: number) =>
+    beatFrames.filter(f => Math.abs(f - target) <= maxShiftFrames && f >= 0 && f <= max);
+  const startCands = near(rawStart, totalFrames - 1);
+  const endCands = near(rawEnd, totalFrames);
+  if (startCands.length === 0) {
+    startCands.push(rawStart);
+  }
+  if (endCands.length === 0) {
+    endCands.push(Math.min(rawEnd, totalFrames));
+  }
+
+  const period = periodFrames && periodFrames > 0 && isFinite(periodFrames) ? periodFrames : 0;
+  const shiftUnit = period > 0 ? period : Math.max(1, maxShiftFrames);
+  let best: { startFrame: number; endFrame: number } | null = null;
+  let bestCost = Infinity;
+  for (const s of startCands) {
+    for (const e of endCands) {
+      if (e - s < seg.highlightFrames / 2) {
+        continue;
+      }
+      let cost = (Math.abs(s - rawStart) + Math.abs(e - rawEnd)) / shiftUnit;
+      if (period > 0) {
+        const beats = Math.round((e - s) / period);
+        const offBar = Math.abs(beats - BEATS_PER_BAR * Math.round(beats / BEATS_PER_BAR));
+        cost += offBar * OFF_BAR_PENALTY;
+      }
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = { startFrame: s, endFrame: e };
+      }
+    }
+  }
+  if (!best) {
+    return seg;
+  }
+  return { startFrame: best.startFrame, highlightFrames: best.endFrame - best.startFrame };
+}
+
+/**
+ * Picks up to `segmentCount` non-overlapping ~15s windows with highest summed spectral energy each,
+ * moves their boundaries onto beats (see `snapSegmentToBeats`), sorts them chronologically,
+ * concatenates spectrums, and remaps beat indices.
  */
 export async function computeHighlightSlice(
   fps: number,
@@ -175,6 +321,7 @@ export async function computeHighlightSlice(
   spectrums: number[][],
   beatEvents: BeatFrameEvent[],
   segmentCount = 1,
+  beatGrid?: HighlightBeatGrid | null,
 ): Promise<{
   startFrame: number;
   highlightFrames: number;
@@ -228,6 +375,8 @@ export async function computeHighlightSlice(
   const energies = await buildFrameEnergies(spectrums, totalFrames);
   const excludeRanges: Array<{ start: number; endExclusive: number }> = [];
   const rawSegments: Array<{ startFrame: number; highlightFrames: number }> = [];
+  const beatFrames = buildBeatCandidates(fps, totalFrames, beatEvents, beatGrid);
+  const maxShiftFrames = Math.round(MAX_BEAT_SNAP_SEC * fps);
 
   const n = Math.max(1, Math.floor(segmentCount));
   for (let k = 0; k < n; k++) {
@@ -240,8 +389,19 @@ export async function computeHighlightSlice(
     if (startFrame === null) {
       break;
     }
-    rawSegments.push({ startFrame, highlightFrames });
-    excludeRanges.push({ start: startFrame, endExclusive: startFrame + highlightFrames });
+    const snapped = snapSegmentToBeats(
+      { startFrame, highlightFrames },
+      totalFrames,
+      beatFrames,
+      maxShiftFrames,
+      beatGrid?.periodFrames,
+    );
+    rawSegments.push(snapped);
+    // Padded so the next raw window, once snapped, cannot reach back into this one.
+    excludeRanges.push({
+      start: snapped.startFrame - maxShiftFrames,
+      endExclusive: snapped.startFrame + snapped.highlightFrames + maxShiftFrames,
+    });
   }
 
   rawSegments.sort((a, b) => a.startFrame - b.startFrame);

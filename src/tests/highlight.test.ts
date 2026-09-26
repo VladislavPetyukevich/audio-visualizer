@@ -1,5 +1,11 @@
 import { expect } from 'chai';
-import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from '../highlight';
+import {
+  computeHighlightSlice,
+  HIGHLIGHT_DURATION_SEC,
+  MAX_BEAT_SNAP_SEC,
+  buildBeatCandidates,
+  snapSegmentToBeats,
+} from '../highlight';
 
 const dummySpectrums = (n: number) => Array.from({ length: n }, () => [0]);
 
@@ -113,9 +119,10 @@ describe('computeHighlightSlice', function() {
     ]);
 
     expect(result.startFrame).equal(10);
-    expect(result.highlightFrames).equal(highlightFrames);
+    // The end moves from frame 460 onto the nearby beat at 500.
+    expect(result.highlightFrames).equal(490);
     expect(result.audioSegments).deep.equal([
-      { seekSeconds: 10 / fps, durationSeconds: highlightFrames / fps },
+      { seekSeconds: 10 / fps, durationSeconds: 490 / fps },
     ]);
     expect(result.runs).have.length(1);
   });
@@ -174,5 +181,81 @@ describe('computeHighlightSlice', function() {
     expect(result.highlightFrames).equal(highlightFrames);
     expect(result.audioSegments).have.length(1);
     expect(result.runs).have.length(1);
+  });
+
+  it('snaps highlight start and end onto detected beats', async function() {
+    const fps = 30;
+    const totalFrames = 1000;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 300, 300 + highlightFrames);
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [
+      { frameIndex: 290, intensity: 1 },
+      { frameIndex: 600, intensity: 1 },
+      { frameIndex: 760, intensity: 1 },
+    ]);
+
+    expect(result.startFrame).equal(290);
+    expect(result.highlightFrames).equal(760 - 290);
+    expect(result.audioSegments).deep.equal([
+      { seekSeconds: 290 / fps, durationSeconds: (760 - 290) / fps },
+    ]);
+    expect(result.beatFrameIndices).deep.equal([0, 310]);
+  });
+
+  it('snaps to a tempo grid and prefers a whole number of bars', async function() {
+    const fps = 30;
+    const totalFrames = 2000;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 505, 505 + highlightFrames);
+    // 120 BPM at 30 fps: a beat every 15 frames, a bar every 60.
+    const beatGrid = { periodFrames: 15, phaseFrame: 5 };
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 1, beatGrid);
+
+    expect((result.startFrame - 5) % 15).equal(0);
+    expect(result.highlightFrames % 60).equal(0);
+    expect(Math.abs(result.startFrame - 505)).lte(MAX_BEAT_SNAP_SEC * fps);
+    expect(Math.abs(result.highlightFrames - highlightFrames)).lte(2 * MAX_BEAT_SNAP_SEC * fps);
+  });
+
+  it('keeps several snapped highlights from overlapping', async function() {
+    const fps = 30;
+    const totalFrames = 3000;
+    const spectrums = Array.from({ length: totalFrames }, (_, i) => [1 + Math.sin(i / 50)]);
+    const beatGrid = { periodFrames: 14, phaseFrame: 3 };
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 4, beatGrid);
+
+    for (let i = 1; i < result.runs.length; i++) {
+      const prev = result.runs[i - 1];
+      expect(result.runs[i].startFrame).gte(prev.startFrame + prev.highlightFrames);
+    }
+  });
+});
+
+describe('buildBeatCandidates', function() {
+  it('uses onsets when no tempo grid is given', function() {
+    expect(buildBeatCandidates(30, 100, [
+      { frameIndex: 40, intensity: 1 },
+      { frameIndex: 10, intensity: 1 },
+      { frameIndex: 10, intensity: 1 },
+    ])).deep.equal([10, 40]);
+  });
+
+  it('uses tracked beats, then the grid nudged onto nearby onsets', function() {
+    const frames = buildBeatCandidates(10, 60, [{ frameIndex: 41, intensity: 1 }], {
+      periodFrames: 10,
+      phaseFrame: 0,
+      beatsSec: [0.1, 1.1, 2.1],
+    });
+    expect(frames).deep.equal([1, 11, 21, 30, 41, 50, 60]);
+  });
+});
+
+describe('snapSegmentToBeats', function() {
+  it('leaves a segment unchanged when no beat is close enough', function() {
+    const seg = { startFrame: 100, highlightFrames: 200 };
+    expect(snapSegmentToBeats(seg, 1000, [10, 900], 20)).deep.equal(seg);
   });
 });
