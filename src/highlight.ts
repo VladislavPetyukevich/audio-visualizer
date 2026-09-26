@@ -20,6 +20,8 @@ const BEATS_PER_BAR = 4;
 const OFF_BAR_PENALTY = 3;
 /** Grid beats past the analyzed tempo region snap to a detected onset within this share of a beat. */
 const GRID_ONSET_SNAP_SHARE = 0.2;
+/** Seconds of audio compared before and after a beat to score it as a drop. */
+export const DROP_WINDOW_SEC = 4;
 
 /** Tempo grid used to snap highlight cuts to beats (subset of `TempoEstimate`). */
 export interface HighlightBeatGrid {
@@ -42,15 +44,17 @@ export interface HighlightRun {
   beatFrameIndices: number[];
   beatIntensities: number[];
   audioSegment: HighlightAudioSegment;
+  /** Frames from the run start to the detected drop; set when a lead-in was requested and a drop fits. */
+  leadInFrames?: number;
 }
 
 function buildHighlightRun(
   fps: number,
-  seg: { startFrame: number; highlightFrames: number },
+  seg: { startFrame: number; highlightFrames: number; leadInFrames?: number },
   spectrums: number[][],
   beatEvents: BeatFrameEvent[],
 ): HighlightRun {
-  const { startFrame, highlightFrames } = seg;
+  const { startFrame, highlightFrames, leadInFrames } = seg;
   const spectrumsSlice = spectrums.slice(startFrame, startFrame + highlightFrames);
   const beatsInWindow = beatEvents
     .filter(b => b.frameIndex >= startFrame && b.frameIndex < startFrame + highlightFrames)
@@ -67,6 +71,7 @@ function buildHighlightRun(
       seekSeconds: startFrame / fps,
       durationSeconds: highlightFrames / fps,
     },
+    ...(leadInFrames !== undefined && { leadInFrames }),
   };
 }
 
@@ -184,6 +189,55 @@ async function findBestHighlightStart(
   return bestStart;
 }
 
+/**
+ * Picks the beat with the biggest rise in mean energy from the `dropWindowFrames` before it
+ * to the `dropWindowFrames` after it, such that the lead-in before it plus `mainFrames` after it
+ * fit in the track and miss the excluded ranges. The window start moves forward onto the first
+ * beat at or after `drop - leadInFrames` (so the lead-in never runs longer than requested).
+ */
+function findBestDropSegment(
+  energies: Float64Array,
+  totalFrames: number,
+  mainFrames: number,
+  leadInFrames: number,
+  dropWindowFrames: number,
+  beatFrames: number[],
+  excludeRanges: Array<{ start: number; endExclusive: number }>,
+): { startFrame: number; dropFrame: number } | null {
+  const prefix = new Float64Array(totalFrames + 1);
+  for (let i = 0; i < totalFrames; i++) {
+    prefix[i + 1] = prefix[i] + energies[i];
+  }
+  const meanEnergy = (from: number, to: number) => {
+    const a = Math.max(0, from);
+    const b = Math.min(totalFrames, to);
+    return b > a ? (prefix[b] - prefix[a]) / (b - a) : 0;
+  };
+
+  let best: { startFrame: number; dropFrame: number } | null = null;
+  let bestScore = -Infinity;
+  for (const dropFrame of beatFrames) {
+    const earliestStart = dropFrame - leadInFrames;
+    if (earliestStart < 0) {
+      continue;
+    }
+    const startFrame = beatFrames.find(f => f >= earliestStart && f < dropFrame) ?? earliestStart;
+    if (
+      dropFrame + mainFrames > totalFrames ||
+      rangesOverlap(startFrame, dropFrame + mainFrames, excludeRanges)
+    ) {
+      continue;
+    }
+    const score = meanEnergy(dropFrame, dropFrame + dropWindowFrames)
+      - meanEnergy(dropFrame - dropWindowFrames, dropFrame);
+    if (score > bestScore) {
+      bestScore = score;
+      best = { startFrame, dropFrame };
+    }
+  }
+  return best;
+}
+
 function nearestOnset(sortedOnsets: number[], frame: number): number | null {
   let lo = 0;
   let hi = sortedOnsets.length;
@@ -269,12 +323,14 @@ export function snapSegmentToBeats(
   beatFrames: number[],
   maxShiftFrames: number,
   periodFrames?: number,
+  /** Keep the start where it is and only move the end. */
+  lockStart = false,
 ): { startFrame: number; highlightFrames: number } {
   const rawStart = seg.startFrame;
   const rawEnd = seg.startFrame + seg.highlightFrames;
   const near = (target: number, max: number) =>
     beatFrames.filter(f => Math.abs(f - target) <= maxShiftFrames && f >= 0 && f <= max);
-  const startCands = near(rawStart, totalFrames - 1);
+  const startCands = lockStart ? [rawStart] : near(rawStart, totalFrames - 1);
   const endCands = near(rawEnd, totalFrames);
   if (startCands.length === 0) {
     startCands.push(rawStart);
@@ -314,6 +370,11 @@ export function snapSegmentToBeats(
  * Picks up to `segmentCount` non-overlapping ~15s windows with highest summed spectral energy each,
  * moves their boundaries onto beats (see `snapSegmentToBeats`), sorts them chronologically,
  * concatenates spectrums, and remaps beat indices.
+ *
+ * With `leadInFrames` (e.g. a hook video's length), each window is instead built around a detected
+ * drop: it starts on a beat at most `leadInFrames` before the drop, so the lead-in ends on the drop
+ * (see `HighlightRun.leadInFrames`), and runs ~15s past the drop, so the lead-in is added on top of
+ * the ~15s rather than taken out of it. Falls back to the energy window when no drop fits.
  */
 export async function computeHighlightSlice(
   fps: number,
@@ -322,6 +383,7 @@ export async function computeHighlightSlice(
   beatEvents: BeatFrameEvent[],
   segmentCount = 1,
   beatGrid?: HighlightBeatGrid | null,
+  leadInFrames?: number,
 ): Promise<{
   startFrame: number;
   highlightFrames: number;
@@ -374,12 +436,48 @@ export async function computeHighlightSlice(
   const highlightFrames = highlightFramesTarget;
   const energies = await buildFrameEnergies(spectrums, totalFrames);
   const excludeRanges: Array<{ start: number; endExclusive: number }> = [];
-  const rawSegments: Array<{ startFrame: number; highlightFrames: number }> = [];
+  const rawSegments: Array<{ startFrame: number; highlightFrames: number; leadInFrames?: number }> = [];
   const beatFrames = buildBeatCandidates(fps, totalFrames, beatEvents, beatGrid);
   const maxShiftFrames = Math.round(MAX_BEAT_SNAP_SEC * fps);
+  const useDrops = leadInFrames !== undefined && leadInFrames > 0;
+  const dropWindowFrames = Math.round(DROP_WINDOW_SEC * fps);
 
   const n = Math.max(1, Math.floor(segmentCount));
   for (let k = 0; k < n; k++) {
+    const drop = useDrops
+      ? findBestDropSegment(
+          energies,
+          totalFrames,
+          highlightFrames,
+          leadInFrames as number,
+          dropWindowFrames,
+          beatFrames,
+          excludeRanges,
+        )
+      : null;
+    if (drop) {
+      // Only the part from the drop on is ~15s; its end is snapped to a beat.
+      const main = snapSegmentToBeats(
+        { startFrame: drop.dropFrame, highlightFrames },
+        totalFrames,
+        beatFrames,
+        maxShiftFrames,
+        beatGrid?.periodFrames,
+        true,
+      );
+      const dropLeadIn = drop.dropFrame - drop.startFrame;
+      rawSegments.push({
+        startFrame: drop.startFrame,
+        highlightFrames: dropLeadIn + main.highlightFrames,
+        leadInFrames: dropLeadIn,
+      });
+      excludeRanges.push({
+        start: drop.startFrame - maxShiftFrames,
+        endExclusive: main.startFrame + main.highlightFrames + maxShiftFrames,
+      });
+      await waitForEventLoop();
+      continue;
+    }
     const startFrame = await findBestHighlightStart(
       energies,
       totalFrames,

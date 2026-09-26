@@ -183,6 +183,48 @@ describe('computeHighlightSlice', function() {
     expect(result.runs).have.length(1);
   });
 
+  it('starts one lead-in before the drop, on a beat, when leadInFrames is given', async function() {
+    const fps = 10;
+    const totalFrames = 1000;
+    // Quiet until frame 600, loud after: the drop is at 600.
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 600, totalFrames);
+    const beats = Array.from({ length: 200 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, null, 43);
+
+    // 600 - 43 = 557; the first beat at or after it is 560.
+    expect(result.runs).have.length(1);
+    expect(result.runs[0].startFrame).equal(560);
+    expect(result.runs[0].leadInFrames).equal(40);
+    // The lead-in comes on top of the ~15s that follow the drop.
+    expect(result.runs[0].highlightFrames).equal(40 + Math.ceil(HIGHLIGHT_DURATION_SEC * fps));
+  });
+
+  it('picks a separate drop for each highlight', async function() {
+    const fps = 10;
+    const totalFrames = 2000;
+    const spectrums = Array.from({ length: totalFrames }, (_, i) =>
+      (i >= 500 && i < 800) || (i >= 1400 && i < 1700) ? [1] : [0],
+    );
+    const beats = Array.from({ length: 400 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 2, null, 30);
+
+    expect(result.runs.map(run => run.startFrame + (run.leadInFrames as number))).deep.equal([500, 1400]);
+    expect(result.runs.map(run => run.leadInFrames)).deep.equal([30, 30]);
+  });
+
+  it('falls back to the energy window when no drop fits with its lead-in', async function() {
+    const fps = 10;
+    const totalFrames = 1000;
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 600, totalFrames);
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 1, null, 900);
+
+    expect(result.runs[0].leadInFrames).equal(undefined);
+    expect(result.runs[0].startFrame).equal(600);
+  });
+
   it('snaps highlight start and end onto detected beats', async function() {
     const fps = 30;
     const totalFrames = 1000;

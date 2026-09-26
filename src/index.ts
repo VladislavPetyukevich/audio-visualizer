@@ -77,7 +77,8 @@ export interface Config {
     path: string | string[];
     /**
      * Video played once before the `path` video(s). Plays in full, or when `audio.autoHighlight`
-     * is true, is cut on the last beat before the hook's end so the switch to `path` lands on a beat.
+     * is true, each highlight is chosen so the hook ends on a detected drop and `path` starts with it,
+     * playing ~15s from the drop (the hook comes on top of the ~15s rather than being counted in it).
      * The hook's sound, if any, is mixed over the track, which fades in from silence to full volume while the hook plays.
      */
     hookPath?: string;
@@ -295,6 +296,8 @@ async function prepareBackgroundForRender(params: {
   hookVideoPath?: string;
   /** When set, the hook is cut on the last of these frames not past its natural end. */
   hookBeatFrameIndices?: number[];
+  /** Exact hook length in frames (e.g. up to a detected drop); overrides `hookBeatFrameIndices`. */
+  hookFrameCount?: number;
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -323,6 +326,7 @@ async function prepareBackgroundForRender(params: {
     startVideoIndex = 0,
     hookVideoPath,
     hookBeatFrameIndices,
+    hookFrameCount,
   } = params;
 
   if (useVideoBackground && backgroundVideoPaths && backgroundVideoPaths.length > 0) {
@@ -335,9 +339,11 @@ async function prepareBackgroundForRender(params: {
     const encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
 
     const hookVideoInfo = hookVideoPath ? await getVideoInfo(hookVideoPath) : undefined;
-    const hookFrames = hookVideoInfo
-      ? computeHookFrameCount(hookVideoInfo.duration, fps, framesCount, hookBeatFrameIndices)
-      : 0;
+    const hookFrames = !hookVideoInfo
+      ? 0
+      : hookFrameCount !== undefined
+        ? Math.min(hookFrameCount, framesCount)
+        : computeHookFrameCount(hookVideoInfo.duration, fps, framesCount, hookBeatFrameIndices);
     // The background videos fill the frames after the hook, on a timeline starting at the hook's end.
     const mainFramesCount = framesCount - hookFrames;
     const mainBeatFrameIndices: number[] = [];
@@ -619,6 +625,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
 
     if (autoHighlight) {
       reportProgress(PRE_PROCESS_PROGRESS_SHARE + 1);
+      // With a hook, highlights are built so the hook ends on a detected drop.
+      const hookLeadInFrames = hookVideoPath
+        ? Math.round((await getVideoInfo(hookVideoPath)).duration * FPS)
+        : undefined;
       highlightSlice = await computeHighlightSlice(
         FPS,
         framesCount,
@@ -626,6 +636,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         preprocessed.beatEvents,
         getAudioAutoHighlightCount(config),
         trackTempo,
+        hookLeadInFrames,
       );
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;
@@ -652,6 +663,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       frameCount: number;
       startFrame: number;
       audioSegment: import('./highlight').HighlightAudioSegment | undefined;
+      /** Frames until the detected drop, where the hook should end. */
+      leadInFrames?: number;
     };
 
     const passes: VideoRenderPass[] =
@@ -669,6 +682,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             frameCount: run.highlightFrames,
             startFrame: run.startFrame,
             audioSegment: run.audioSegment,
+            leadInFrames: run.leadInFrames,
           };
         })
       : [
@@ -685,6 +699,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
               highlightSlice.audioSegments.length > 0
                 ? highlightSlice.audioSegments[0]
                 : undefined,
+            leadInFrames: highlightSlice?.runs.length === 1 ? highlightSlice.runs[0].leadInFrames : undefined,
           },
         ];
 
@@ -744,6 +759,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           startVideoIndex: passIndex,
           hookVideoPath,
           ...(hookBeatFrameIndices ? { hookBeatFrameIndices } : {}),
+          ...(pass.leadInFrames !== undefined ? { hookFrameCount: pass.leadInFrames } : {}),
         });
         reportRenderProgress();
 
