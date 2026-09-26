@@ -183,7 +183,7 @@ describe('computeHighlightSlice', function() {
     expect(result.runs).have.length(1);
   });
 
-  it('starts one lead-in before the drop, on a beat, when leadInFrames is given', async function() {
+  it('starts the whole lead-in before the drop when leadInFrames is given', async function() {
     const fps = 10;
     const totalFrames = 1000;
     // Quiet until frame 600, loud after: the drop is at 600.
@@ -192,12 +192,24 @@ describe('computeHighlightSlice', function() {
 
     const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, null, 43);
 
-    // 600 - 43 = 557; the first beat at or after it is 560.
     expect(result.runs).have.length(1);
-    expect(result.runs[0].startFrame).equal(560);
-    expect(result.runs[0].leadInFrames).equal(40);
+    expect(result.runs[0].startFrame).equal(557);
+    expect(result.runs[0].leadInFrames).equal(43);
     // The lead-in comes on top of the ~15s that follow the drop.
-    expect(result.runs[0].highlightFrames).equal(40 + Math.ceil(HIGHLIGHT_DURATION_SEC * fps));
+    expect(result.runs[0].highlightFrames).equal(43 + Math.ceil(HIGHLIGHT_DURATION_SEC * fps));
+  });
+
+  it('shortens the lead-in to the track start when only an early drop fits', async function() {
+    const fps = 10;
+    // A full 130-frame lead-in needs a drop at 130+, but ~15s must follow it: only 100 fits.
+    const totalFrames = 250;
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 100, totalFrames);
+    const beats = Array.from({ length: 50 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, null, 130);
+
+    expect(result.runs[0].startFrame).equal(0);
+    expect(result.runs[0].leadInFrames).equal(100);
   });
 
   it('picks a separate drop for each highlight', async function() {
@@ -214,15 +226,18 @@ describe('computeHighlightSlice', function() {
     expect(result.runs.map(run => run.leadInFrames)).deep.equal([30, 30]);
   });
 
-  it('falls back to the energy window when no drop fits with its lead-in', async function() {
+  it('puts the lead-in before the energy window when no drop is found', async function() {
     const fps = 10;
     const totalFrames = 1000;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
     const spectrums = spectrumsWithEnergyInRange(totalFrames, 600, totalFrames);
 
     const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 1, null, 900);
 
-    expect(result.runs[0].leadInFrames).equal(undefined);
-    expect(result.runs[0].startFrame).equal(600);
+    // The window starts at 600; only 600 frames of the lead-in fit before it.
+    expect(result.runs[0].startFrame).equal(0);
+    expect(result.runs[0].leadInFrames).equal(600);
+    expect(result.runs[0].highlightFrames).equal(600 + highlightFrames);
   });
 
   it('snaps highlight start and end onto detected beats', async function() {

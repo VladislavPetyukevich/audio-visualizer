@@ -154,6 +154,37 @@ export const detectSceneChanges = (videoPath: string, threshold = 0.4): Promise<
     ffmpeg.on('error', reject);
   });
 
+/**
+ * Number of whole frames the video stream yields at `fps` (partial last frames dropped).
+ * Unlike the container duration, this never runs past the last video frame (e.g. when the
+ * audio stream is longer), so a clip read for this many frames never wraps back to its start.
+ */
+export const getVideoFrameCount = (videoPath: string, fps: number): Promise<number> =>
+  new Promise((resolvePromise, reject) => {
+    if (!ffmpegPath) {
+      reject(new Error('ffmpeg path not found'));
+      return;
+    }
+    const ffmpeg = spawn(ffmpegPath, [
+      '-i', videoPath,
+      '-map', '0:v:0',
+      '-vf', `fps=${fps}:round=down`,
+      '-f', 'null',
+      '-',
+    ]);
+    let stderr = '';
+    ffmpeg.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+    ffmpeg.on('close', () => {
+      const matches = stderr.match(/frame=\s*\d+/g);
+      if (!matches) {
+        reject(new Error(`Could not count video frames for: ${videoPath}`));
+        return;
+      }
+      resolvePromise(parseInt(matches[matches.length - 1].replace(/\D/g, '')));
+    });
+    ffmpeg.on('error', reject);
+  });
+
 export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
   new Promise((resolvePromise, reject) => {
     if (!ffmpegPath) {

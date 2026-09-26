@@ -192,8 +192,9 @@ async function findBestHighlightStart(
 /**
  * Picks the beat with the biggest rise in mean energy from the `dropWindowFrames` before it
  * to the `dropWindowFrames` after it, such that the lead-in before it plus `mainFrames` after it
- * fit in the track and miss the excluded ranges. The window start moves forward onto the first
- * beat at or after `drop - leadInFrames` (so the lead-in never runs longer than requested).
+ * fit in the track and miss the excluded ranges. The window starts exactly `leadInFrames` before
+ * the drop, so the whole lead-in plays. Drops too close to the track start for the full lead-in
+ * are only used (with the lead-in shortened to reach the start) when no other drop fits.
  */
 function findBestDropSegment(
   energies: Float64Array,
@@ -214,28 +215,34 @@ function findBestDropSegment(
     return b > a ? (prefix[b] - prefix[a]) / (b - a) : 0;
   };
 
-  let best: { startFrame: number; dropFrame: number } | null = null;
-  let bestScore = -Infinity;
-  for (const dropFrame of beatFrames) {
-    const earliestStart = dropFrame - leadInFrames;
-    if (earliestStart < 0) {
-      continue;
+  const findBest = (allowShortLeadIn: boolean) => {
+    let best: { startFrame: number; dropFrame: number } | null = null;
+    let bestScore = -Infinity;
+    for (const dropFrame of beatFrames) {
+      if (dropFrame <= 0) {
+        continue;
+      }
+      const earliestStart = dropFrame - leadInFrames;
+      if (earliestStart < 0 && !allowShortLeadIn) {
+        continue;
+      }
+      const startFrame = Math.max(0, earliestStart);
+      if (
+        dropFrame + mainFrames > totalFrames ||
+        rangesOverlap(startFrame, dropFrame + mainFrames, excludeRanges)
+      ) {
+        continue;
+      }
+      const score = meanEnergy(dropFrame, dropFrame + dropWindowFrames)
+        - meanEnergy(dropFrame - dropWindowFrames, dropFrame);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { startFrame, dropFrame };
+      }
     }
-    const startFrame = beatFrames.find(f => f >= earliestStart && f < dropFrame) ?? earliestStart;
-    if (
-      dropFrame + mainFrames > totalFrames ||
-      rangesOverlap(startFrame, dropFrame + mainFrames, excludeRanges)
-    ) {
-      continue;
-    }
-    const score = meanEnergy(dropFrame, dropFrame + dropWindowFrames)
-      - meanEnergy(dropFrame - dropWindowFrames, dropFrame);
-    if (score > bestScore) {
-      bestScore = score;
-      best = { startFrame, dropFrame };
-    }
-  }
-  return best;
+    return best;
+  };
+  return findBest(false) ?? findBest(true);
 }
 
 function nearestOnset(sortedOnsets: number[], frame: number): number | null {
@@ -372,9 +379,10 @@ export function snapSegmentToBeats(
  * concatenates spectrums, and remaps beat indices.
  *
  * With `leadInFrames` (e.g. a hook video's length), each window is instead built around a detected
- * drop: it starts on a beat at most `leadInFrames` before the drop, so the lead-in ends on the drop
+ * drop: it starts `leadInFrames` before the drop, so the whole lead-in plays and ends on the drop
  * (see `HighlightRun.leadInFrames`), and runs ~15s past the drop, so the lead-in is added on top of
- * the ~15s rather than taken out of it. Falls back to the energy window when no drop fits.
+ * the ~15s rather than taken out of it. When no drop fits, the lead-in is put before the energy
+ * window instead (shortened only where the track start or an earlier window is in the way).
  */
 export async function computeHighlightSlice(
   fps: number,
@@ -494,10 +502,24 @@ export async function computeHighlightSlice(
       maxShiftFrames,
       beatGrid?.periodFrames,
     );
-    rawSegments.push(snapped);
+    // The lead-in plays before the window, up to the track start or an earlier window's end.
+    const prevEnd = rawSegments
+      .map(seg => seg.startFrame + seg.highlightFrames)
+      .filter(end => end <= snapped.startFrame)
+      .reduce((a, b) => Math.max(a, b), 0);
+    const windowLeadIn = useDrops
+      ? Math.min(leadInFrames as number, snapped.startFrame - prevEnd)
+      : 0;
+    rawSegments.push(windowLeadIn > 0
+      ? {
+          startFrame: snapped.startFrame - windowLeadIn,
+          highlightFrames: windowLeadIn + snapped.highlightFrames,
+          leadInFrames: windowLeadIn,
+        }
+      : snapped);
     // Padded so the next raw window, once snapped, cannot reach back into this one.
     excludeRanges.push({
-      start: snapped.startFrame - maxShiftFrames,
+      start: snapped.startFrame - windowLeadIn - maxShiftFrames,
       endExclusive: snapped.startFrame + snapped.highlightFrames + maxShiftFrames,
     });
   }
