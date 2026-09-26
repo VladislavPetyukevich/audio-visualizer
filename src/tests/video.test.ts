@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Writable, Readable, Pipe } from 'stream';
 import { EventEmitter } from 'events';
-import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid, projectBeatsOntoTempoGrid, spawnConcatVideoFrameReader } from '../video';
+import { spawnFfmpegVideoWriter, waitDrain, readVideoFrame, waitForProcessExit, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, computeHookFrameCount, getCutFrameIndices, selectAutoEditCutFrames, snapBeatsToTempoGrid, projectBeatsOntoTempoGrid, spawnConcatVideoFrameReader } from '../video';
 import { createSandbox, SinonStub } from 'sinon';
 import child_process, { ChildProcessWithoutNullStreams } from 'child_process';
 
@@ -68,6 +68,43 @@ describe('video', function () {
     const tIdx = spawnArgs.indexOf('-t');
     expect(tIdx).greaterThan(-1);
     expect(spawnArgs[tIdx + 1]).to.equal('15');
+  });
+
+  it('spawnFfmpegVideoWriter mixes overlay audio while the track fades in', function () {
+    const childProcessReadableStream = new Readable();
+    childProcessReadableStream._read = () => { };
+    const childProcessWritableStream = new Writable();
+    (<Pipe>childProcessWritableStream.pipe) = () => childProcessWritableStream;
+
+    childProcessStream.stdin = childProcessWritableStream;
+    childProcessStream.stderr = childProcessReadableStream;
+
+    let spawnArgs: string[] = [];
+    const spawnStub = child_process.spawn as SinonStub;
+    spawnStub.callsFake((_cmd: string, args: string[]) => {
+      spawnArgs = args;
+      return childProcessStream as ChildProcessWithoutNullStreams;
+    });
+
+    spawnFfmpegVideoWriter({
+      audioFilename: 'audio.mp3',
+      videoFileName: 'out.mp4',
+      fps: 25,
+      overlayAudio: { filename: 'hook.mp4', durationSeconds: 3.2 },
+    });
+
+    spawnStub.resetBehavior();
+    spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
+
+    const inputs = spawnArgs.filter((_, i) => spawnArgs[i - 1] === '-i');
+    expect(inputs).deep.equal(['audio.mp3', '-', 'hook.mp4']);
+    const hookIdx = spawnArgs.indexOf('hook.mp4');
+    expect(spawnArgs.slice(hookIdx - 3, hookIdx - 1)).deep.equal(['-t', '3.2']);
+    const filter = spawnArgs[spawnArgs.indexOf('-filter_complex') + 1];
+    expect(filter).to.include('[0:a]aformat=channel_layouts=stereo,afade=t=in:st=0:d=3.2[track]');
+    expect(filter).to.include('[2:a]aformat=channel_layouts=stereo[overlay]');
+    expect(filter).to.include('[track][overlay]amix=inputs=2:duration=first');
+    expect(spawnArgs.join(' ')).to.include('-map 1:v -map [aout]');
   });
 
   it('spawnFfmpegVideoWriter adds subtitles filter when subtitle file is provided', function () {
@@ -281,6 +318,22 @@ describe('video', function () {
     const { exitCode, reason } = await waitForProcessExit(processEmitter, 5);
     expect(exitCode).equal(1);
     expect(reason).equal('waitForProcessExit timeout (5ms)');
+  });
+
+  it('computeHookFrameCount plays the full hook without beats', function () {
+    expect(computeHookFrameCount(2, 30, 300)).equal(60);
+    expect(computeHookFrameCount(20, 30, 300)).equal(300);
+  });
+
+  it('computeHookFrameCount cuts the hook on the last beat before its end', function () {
+    expect(computeHookFrameCount(2, 30, 300, [15, 35, 55, 75])).equal(55);
+    expect(computeHookFrameCount(2, 30, 300, [60, 80])).equal(60);
+  });
+
+  it('computeHookFrameCount plays the full hook when no beat falls inside it', function () {
+    expect(computeHookFrameCount(2, 30, 300, [70, 90])).equal(60);
+    expect(computeHookFrameCount(2, 30, 300, [])).equal(60);
+    expect(computeHookFrameCount(20, 30, 300, [100, 200])).equal(300);
   });
 
   it('getCutFrameIndices skips the opening segment', function () {

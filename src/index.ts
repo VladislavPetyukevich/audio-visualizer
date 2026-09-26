@@ -4,6 +4,7 @@ import {
   getAudioFilePath,
   getBackgroundImagePath,
   getBackgroundVideoPaths,
+  getHookVideoPath,
   getOutVideoPath,
   getSubtitleRenderSpec,
   subtitleAlignmentToAss,
@@ -40,9 +41,9 @@ import {
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor, pcmU8ToFloatSamples } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes, CAMERA_SHAKE_DELAY_SECONDS, CAMERA_SHAKE_EVERY_BEATS } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
-import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile, VideoSegment } from './video';
+import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, computeHookFrameCount, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile, VideoSegment } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, tempoForWindow, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
+import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, tempoForWindow, shiftTempoPhase, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
 export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
@@ -74,6 +75,12 @@ export interface Config {
      * videos instead of auto-detecting scene changes within a single video.
      */
     path: string | string[];
+    /**
+     * Video played once before the `path` video(s). Plays in full, or when `audio.autoHighlight`
+     * is true, is cut on the last beat before the hook's end so the switch to `path` lands on a beat.
+     * The hook's sound, if any, is mixed over the track, which fades in from silence to full volume while the hook plays.
+     */
+    hookPath?: string;
     autoEdit?: boolean;
     /** When `autoEdit` is true, disables the brief camera shake applied on cuts, or every 2 beats when there are no cuts (default true). */
     cameraShake?: boolean;
@@ -284,6 +291,10 @@ async function prepareBackgroundForRender(params: {
   tempo?: TempoEstimate | null;
   /** First video to play for `video.path` arrays without `autoEdit`. */
   startVideoIndex?: number;
+  /** Video played once before the background videos. */
+  hookVideoPath?: string;
+  /** When set, the hook is cut on the last of these frames not past its natural end. */
+  hookBeatFrameIndices?: number[];
 }): Promise<{
   backgroundWidth: number;
   backgroundHeight: number;
@@ -294,6 +305,8 @@ async function prepareBackgroundForRender(params: {
   encodeVideoFrame?: (bgrBuffer: Buffer) => EncodedBmp;
   concatFilePath?: string;
   cutFrameIndices: number[];
+  /** Hook video whose sound plays over the first `frameCount` output frames. */
+  hookAudio?: { path: string; frameCount: number };
 }> {
   const {
     useVideoBackground,
@@ -308,6 +321,8 @@ async function prepareBackgroundForRender(params: {
     readVideoFrameTimeout,
     tempo,
     startVideoIndex = 0,
+    hookVideoPath,
+    hookBeatFrameIndices,
   } = params;
 
   if (useVideoBackground && backgroundVideoPaths && backgroundVideoPaths.length > 0) {
@@ -319,21 +334,39 @@ async function prepareBackgroundForRender(params: {
     const videoFrameSize = backgroundWidth * backgroundHeight * 3;
     const encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
 
+    const hookVideoInfo = hookVideoPath ? await getVideoInfo(hookVideoPath) : undefined;
+    const hookFrames = hookVideoInfo
+      ? computeHookFrameCount(hookVideoInfo.duration, fps, framesCount, hookBeatFrameIndices)
+      : 0;
+    // The background videos fill the frames after the hook, on a timeline starting at the hook's end.
+    const mainFramesCount = framesCount - hookFrames;
+    const mainBeatFrameIndices: number[] = [];
+    const mainBeatIntensities: number[] | undefined = beatIntensities ? [] : undefined;
+    beatFrameIndices.forEach((frameIndex, i) => {
+      if (frameIndex >= hookFrames) {
+        mainBeatFrameIndices.push(frameIndex - hookFrames);
+        mainBeatIntensities?.push(beatIntensities![i]);
+      }
+    });
+    const mainTempo = tempo ? shiftTempoPhase(tempo, hookFrames) : tempo;
+
     let segments: VideoSegment[];
-    if (backgroundVideoPaths.length > 1) {
+    if (mainFramesCount <= 0) {
+      segments = [];
+    } else if (backgroundVideoPaths.length > 1) {
       segments = autoEditVideo
         ? buildShuffledVideoSegments(
-            beatFrameIndices,
-            framesCount,
+            mainBeatFrameIndices,
+            mainFramesCount,
             backgroundVideoPaths.length,
             fps,
             {
-              beatIntensities,
-              ...(tempo ? { tempo } : {}),
+              beatIntensities: mainBeatIntensities,
+              ...(mainTempo ? { tempo: mainTempo } : {}),
             },
           )
         : buildSequentialVideoSegments(
-            framesCount,
+            mainFramesCount,
             videoInfos.map(info => info.duration),
             fps,
             startVideoIndex % backgroundVideoPaths.length,
@@ -343,19 +376,29 @@ async function prepareBackgroundForRender(params: {
         ? await detectSceneChanges(backgroundVideoPaths[0])
         : [];
       segments = buildBeatSyncedSegments(
-        beatFrameIndices,
-        framesCount,
+        mainBeatFrameIndices,
+        mainFramesCount,
         sceneChanges,
         primaryVideoInfo.duration,
         fps,
         {
-          beatIntensities,
-          ...(autoEditVideo && tempo ? { tempo } : {}),
+          beatIntensities: mainBeatIntensities,
+          ...(autoEditVideo && mainTempo ? { tempo: mainTempo } : {}),
         },
       );
     }
 
     const videoSources = videoInfos.map((info, i) => ({ path: backgroundVideoPaths[i], duration: info.duration }));
+    if (hookVideoPath && hookVideoInfo && hookFrames > 0) {
+      segments = [
+        { outputStartFrame: 0, videoSeekSeconds: 0, frameCount: hookFrames, videoIndex: videoSources.length },
+        ...segments.map(segment => ({
+          ...segment,
+          outputStartFrame: segment.outputStartFrame + hookFrames,
+        })),
+      ];
+      videoSources.push({ path: hookVideoPath, duration: hookVideoInfo.duration });
+    }
     const concatFilePath = writeConcatFile(segments, videoSources, fps);
     const cutFrameIndices = autoEditVideo ? getCutFrameIndices(segments) : [];
 
@@ -377,7 +420,7 @@ async function prepareBackgroundForRender(params: {
       readVideoFrameTimeout,
     );
     if (!firstFrame) {
-      throw new Error(`Could not read frames from video: ${backgroundVideoPaths.join(', ')}`);
+      throw new Error(`Could not read frames from video: ${videoSources.map(source => source.path).join(', ')}`);
     }
     const defaultColor = getVideoFrameColor(firstFrame, backgroundWidth, backgroundHeight);
     const staticBackgroundBuffer = encodeVideoFrame(firstFrame);
@@ -391,6 +434,9 @@ async function prepareBackgroundForRender(params: {
       encodeVideoFrame,
       concatFilePath,
       cutFrameIndices,
+      ...(hookVideoPath && hookVideoInfo?.hasAudio && hookFrames > 0 && {
+        hookAudio: { path: hookVideoPath, frameCount: hookFrames },
+      }),
     };
   }
 
@@ -501,6 +547,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
       }
     }
     const backgroundVideoPaths = getBackgroundVideoPaths(config);
+    const hookVideoPath = getHookVideoPath(config);
     const backgroundImagePath = getBackgroundImagePath(config);
     const useVideoBackground = !!backgroundVideoPaths && backgroundVideoPaths.length > 0;
 
@@ -659,9 +706,14 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     try {
       passLoop: for (let passIndex = 0; passIndex < passes.length; passIndex++) {
         const pass = passes[passIndex];
-        const tempo = autoEditVideo && trackTempo
+        const windowTempo = trackTempo
           ? tempoForWindow(trackTempo, pass.startFrame, FPS, pass.frameCount, pass.beatIndices)
           : null;
+        const tempo = autoEditVideo ? windowTempo : null;
+        // With autoHighlight, the hook ends on a beat so the switch to the main video is in time.
+        const hookBeatFrameIndices = hookVideoPath && autoHighlight
+          ? (windowTempo ? beatGridFrameIndices(windowTempo, pass.frameCount) : pass.beatIndices)
+          : undefined;
         const shakeAmplitudes = tempo
           ? buildCutShakeAmplitudes(tempo.periodFrames)
           : undefined;
@@ -675,6 +727,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           encodeVideoFrame,
           concatFilePath,
           cutFrameIndices,
+          hookAudio,
         } = await prepareBackgroundForRender({
           useVideoBackground,
           backgroundVideoPaths,
@@ -689,6 +742,8 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           ...(tempo ? { tempo } : {}),
           // Each separate highlight output opens with a different video from the array.
           startVideoIndex: passIndex,
+          hookVideoPath,
+          ...(hookBeatFrameIndices ? { hookBeatFrameIndices } : {}),
         });
         reportRenderProgress();
 
@@ -713,6 +768,9 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           }),
           fps: FPS,
           ...(pass.audioSegment && { audioSegment: pass.audioSegment }),
+          ...(hookAudio && {
+            overlayAudio: { filename: hookAudio.path, durationSeconds: hookAudio.frameCount / FPS },
+          }),
           ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
           ...(ffmpeg_preset && { preset: ffmpeg_preset }),
         });

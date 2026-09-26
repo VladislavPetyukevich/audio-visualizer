@@ -8,6 +8,7 @@ import {
   getAudioAutoHighlightCount,
   getBackgroundImagePath,
   getBackgroundVideoPaths,
+  getHookVideoPath,
   getCameraShakeEnabled,
   getOutVideoPath,
   getSubtitleRenderSpec,
@@ -91,6 +92,24 @@ describe('config', function() {
     expect(
       getBackgroundVideoPaths.bind(undefined, { video: { path: [] } } as unknown as Config)
     ).to.throw('Invalid video.path');
+  });
+
+  it('getHookVideoPath', function() {
+    expect(
+      getHookVideoPath({ audio: { path: 'a.wav' } } as Config)
+    ).equal(undefined);
+
+    expect(
+      getHookVideoPath({ video: { path: 'a.mp4' } } as Config)
+    ).equal(undefined);
+
+    expect(
+      getHookVideoPath({ video: { path: 'a.mp4', hookPath: 'hook.mp4' } } as Config)
+    ).equal(path.resolve('hook.mp4'));
+
+    expect(
+      getHookVideoPath.bind(undefined, { video: { path: 'a.mp4', hookPath: '' } } as Config)
+    ).to.throw('Invalid video.hookPath');
   });
 
   it('getCameraShakeEnabled', function() {

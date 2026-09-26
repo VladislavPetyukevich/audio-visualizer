@@ -84,6 +84,17 @@ export const getBackgroundVideoPaths = (config: Config): string[] | undefined =>
   return rawPaths.map(rawPath => path.resolve(rawPath));
 };
 
+export const getHookVideoPath = (config: Config): string | undefined => {
+  const raw = config.video?.hookPath;
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    throw new Error(`Invalid video.hookPath: expected non-empty string, got '${String(raw)}'.`);
+  }
+  return path.resolve(raw);
+};
+
 export const getAutoEditVideo = (config: Config) =>
   config.video?.autoEdit === true;
 
