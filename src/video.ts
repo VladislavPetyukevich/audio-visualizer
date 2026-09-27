@@ -10,6 +10,8 @@ import { TempoEstimate, beatGridFrameIndices } from './beats';
 export interface AudioMuxSegment {
   seekSeconds: number;
   durationSeconds: number;
+  /** Silence played before the audio. */
+  delaySeconds?: number;
 }
 
 interface FfmpegVideoWriterConfig {
@@ -27,6 +29,14 @@ interface FfmpegVideoWriterConfig {
   audioDurationSeconds?: number;
   /** One contiguous trim of the same audio file (muxed highlight). */
   audioSegment?: AudioMuxSegment;
+  /**
+   * Audio mixed over the start of the track (e.g. the hook video's sound), from its beginning.
+   * The track fades in from silence to full volume while it plays, along an easeInQuint curve.
+   */
+  overlayAudio?: {
+    filename: string;
+    durationSeconds: number;
+  };
 }
 
 const escapeSubtitleFilterPath = (subtitlePath: string) =>
@@ -37,6 +47,13 @@ const escapeSubtitleFilterPath = (subtitlePath: string) =>
     .replace(/,/g, '\\,')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]');
+
+/**
+ * Fade-in from silence to full volume over `durationSeconds`, following easeInQuint:
+ * gain(x) = x^5, where x is the fraction of the fade elapsed.
+ */
+const easeInQuintFadeFilter = (durationSeconds: number) =>
+  `volume='if(gte(t,${durationSeconds}),1,pow(t/${durationSeconds},5))':eval=frame`;
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   if (!ffmpegPath) {
@@ -58,6 +75,30 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
     '-vcodec', 'bmp',
     '-framerate', `${config.fps}`,
     '-i', '-',
+  );
+  const delaySeconds = config.audioSegment?.delaySeconds ?? 0;
+  const trackDelayFilter = delaySeconds > 0
+    ? `adelay=${Math.round(delaySeconds * 1000)}:all=1`
+    : '';
+  if (config.overlayAudio) {
+    const overlaySeconds = config.overlayAudio.durationSeconds;
+    args.push(
+      '-t', String(overlaySeconds),
+      '-i', config.overlayAudio.filename,
+      // Both inputs go to stereo first: mixing in e.g. a 5.1 hook otherwise yields a channel
+      // layout the AAC encoder rejects. `duration=first` keeps the output as long as the track.
+      '-filter_complex',
+      `[0:a]aformat=channel_layouts=stereo,${trackDelayFilter ? `${trackDelayFilter},` : ''}`
+        + `${easeInQuintFadeFilter(overlaySeconds)}[track];`
+        + '[2:a]aformat=channel_layouts=stereo[overlay];'
+        + '[track][overlay]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
+      '-map', '1:v',
+      '-map', '[aout]',
+    );
+  } else if (trackDelayFilter) {
+    args.push('-af', trackDelayFilter);
+  }
+  args.push(
     '-crf', crf,
     '-c:a', 'aac', '-b:a', '384k', '-profile:a', 'aac_low',
     '-c:v', 'libx264',
@@ -86,6 +127,7 @@ export interface VideoInfo {
   width: number;
   height: number;
   duration: number;
+  hasAudio: boolean;
 }
 
 export interface SceneChange {
@@ -128,6 +170,37 @@ export const detectSceneChanges = (videoPath: string, threshold = 0.4): Promise<
     ffmpeg.on('error', reject);
   });
 
+/**
+ * Number of whole frames the video stream yields at `fps` (partial last frames dropped).
+ * Unlike the container duration, this never runs past the last video frame (e.g. when the
+ * audio stream is longer), so a clip read for this many frames never wraps back to its start.
+ */
+export const getVideoFrameCount = (videoPath: string, fps: number): Promise<number> =>
+  new Promise((resolvePromise, reject) => {
+    if (!ffmpegPath) {
+      reject(new Error('ffmpeg path not found'));
+      return;
+    }
+    const ffmpeg = spawn(ffmpegPath, [
+      '-i', videoPath,
+      '-map', '0:v:0',
+      '-vf', `fps=${fps}:round=down`,
+      '-f', 'null',
+      '-',
+    ]);
+    let stderr = '';
+    ffmpeg.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+    ffmpeg.on('close', () => {
+      const matches = stderr.match(/frame=\s*\d+/g);
+      if (!matches) {
+        reject(new Error(`Could not count video frames for: ${videoPath}`));
+        return;
+      }
+      resolvePromise(parseInt(matches[matches.length - 1].replace(/\D/g, '')));
+    });
+    ffmpeg.on('error', reject);
+  });
+
 export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
   new Promise((resolvePromise, reject) => {
     if (!ffmpegPath) {
@@ -151,6 +224,7 @@ export const getVideoInfo = (videoPath: string): Promise<VideoInfo> =>
         width: parseInt(dimMatch[1]),
         height: parseInt(dimMatch[2]),
         duration,
+        hasAudio: /Stream.*Audio:/.test(stderr),
       });
     });
   });
@@ -761,6 +835,13 @@ export const buildBeatSyncedSegments = (
   }
   return segments;
 };
+
+/** Output frames given to the hook video: it plays in full, but never exceeds `totalFrames`. */
+export const computeHookFrameCount = (
+  hookDurationSeconds: number,
+  fps: number,
+  totalFrames: number,
+): number => Math.max(0, Math.min(totalFrames, Math.round(hookDurationSeconds * fps)));
 
 export const getCutFrameIndices = (segments: VideoSegment[]): number[] =>
   segments
