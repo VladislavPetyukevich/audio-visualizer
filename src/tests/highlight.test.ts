@@ -226,6 +226,34 @@ describe('computeHighlightSlice', function() {
     expect(result.runs.map(run => run.leadInFrames)).deep.equal([30, 30]);
   });
 
+  it('ends the lead-in on the energy onset even when beats are off it', async function() {
+    const fps = 10;
+    const totalFrames = 1000;
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 602, totalFrames);
+    // Beats every 5 frames, none on the onset at 602.
+    const beats = Array.from({ length: 200 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, null, 43);
+
+    expect(result.runs[0].startFrame + (result.runs[0].leadInFrames as number)).equal(602);
+    expect(result.runs[0].leadInFrames).equal(43);
+  });
+
+  it('shortens the lead-in rather than ending it past the drop or on a weak rise', async function() {
+    const fps = 10;
+    const totalFrames = 600;
+    // Big drop at 140, then a small bump at 300; a 200-frame lead-in doesn't fit before 140.
+    const spectrums = Array.from({ length: totalFrames }, (_, i) =>
+      i < 140 ? [0.1] : i < 300 ? [1] : [1.1],
+    );
+    const beats = Array.from({ length: 120 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, null, 200);
+
+    expect(result.runs[0].startFrame).equal(0);
+    expect(result.runs[0].leadInFrames).equal(140);
+  });
+
   it('puts the lead-in before the energy window when no drop is found', async function() {
     const fps = 10;
     const totalFrames = 1000;

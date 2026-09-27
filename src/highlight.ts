@@ -20,8 +20,10 @@ const BEATS_PER_BAR = 4;
 const OFF_BAR_PENALTY = 3;
 /** Grid beats past the analyzed tempo region snap to a detected onset within this share of a beat. */
 const GRID_ONSET_SNAP_SHARE = 0.2;
-/** Seconds of audio compared before and after a beat to score it as a drop. */
+/** Seconds of audio compared before and after a frame to score it as a drop. */
 export const DROP_WINDOW_SEC = 4;
+/** Share of the track's biggest energy rise a peak needs to count as a drop. */
+const MIN_DROP_SCORE_SHARE = 0.5;
 
 /** Tempo grid used to snap highlight cuts to beats (subset of `TempoEstimate`). */
 export interface HighlightBeatGrid {
@@ -190,11 +192,16 @@ async function findBestHighlightStart(
 }
 
 /**
- * Picks the beat with the biggest rise in mean energy from the `dropWindowFrames` before it
- * to the `dropWindowFrames` after it, such that the lead-in before it plus `mainFrames` after it
- * fit in the track and miss the excluded ranges. The window starts exactly `leadInFrames` before
- * the drop, so the whole lead-in plays. Drops too close to the track start for the full lead-in
- * are only used (with the lead-in shortened to reach the start) when no other drop fits.
+ * Scores each frame by the rise in mean energy from the `dropWindowFrames` before it to the
+ * `dropWindowFrames` after it, and picks the best drop, i.e. a frame whose rise is the biggest
+ * within `dropWindowFrames` on either side, such that the lead-in before it plus `mainFrames`
+ * after it fit in the track and miss the excluded ranges. Frames rather than beat candidates are
+ * scored so the drop lands on the actual energy onset (a beat grid can be off by a fraction of a
+ * beat), and only peaks count so a frame just past a drop is never taken for one. Peaks rising
+ * less than `MIN_DROP_SCORE_SHARE` of the biggest one are not drops. The window
+ * starts exactly `leadInFrames` before the drop, so the whole lead-in plays. Drops too close to
+ * the track start for the full lead-in are only used (with the lead-in shortened to reach the
+ * start) when no other drop fits.
  */
 function findBestDropSegment(
   energies: Float64Array,
@@ -202,7 +209,6 @@ function findBestDropSegment(
   mainFrames: number,
   leadInFrames: number,
   dropWindowFrames: number,
-  beatFrames: number[],
   excludeRanges: Array<{ start: number; endExclusive: number }>,
 ): { startFrame: number; dropFrame: number } | null {
   const prefix = new Float64Array(totalFrames + 1);
@@ -214,14 +220,33 @@ function findBestDropSegment(
     const b = Math.min(totalFrames, to);
     return b > a ? (prefix[b] - prefix[a]) / (b - a) : 0;
   };
+  const scores = new Float64Array(totalFrames);
+  for (let f = 0; f < totalFrames; f++) {
+    scores[f] = meanEnergy(f, f + dropWindowFrames) - meanEnergy(f - dropWindowFrames, f);
+  }
+  const dropFrames: number[] = [];
+  for (let f = 1; f < totalFrames; f++) {
+    if (!(scores[f] > 0)) {
+      continue;
+    }
+    let isPeak = true;
+    const from = Math.max(0, f - dropWindowFrames);
+    const to = Math.min(totalFrames - 1, f + dropWindowFrames);
+    for (let g = from; g <= to && isPeak; g++) {
+      // Ties go to the earliest frame, where the rise starts.
+      isPeak = scores[g] < scores[f] || (scores[g] === scores[f] && g >= f);
+    }
+    if (isPeak) {
+      dropFrames.push(f);
+    }
+  }
+  const maxScore = dropFrames.reduce((max, f) => Math.max(max, scores[f]), 0);
+  const strongDropFrames = dropFrames.filter(f => scores[f] >= maxScore * MIN_DROP_SCORE_SHARE);
 
   const findBest = (allowShortLeadIn: boolean) => {
     let best: { startFrame: number; dropFrame: number } | null = null;
     let bestScore = -Infinity;
-    for (const dropFrame of beatFrames) {
-      if (dropFrame <= 0) {
-        continue;
-      }
+    for (const dropFrame of strongDropFrames) {
       const earliestStart = dropFrame - leadInFrames;
       if (earliestStart < 0 && !allowShortLeadIn) {
         continue;
@@ -233,10 +258,8 @@ function findBestDropSegment(
       ) {
         continue;
       }
-      const score = meanEnergy(dropFrame, dropFrame + dropWindowFrames)
-        - meanEnergy(dropFrame - dropWindowFrames, dropFrame);
-      if (score > bestScore) {
-        bestScore = score;
+      if (scores[dropFrame] > bestScore) {
+        bestScore = scores[dropFrame];
         best = { startFrame, dropFrame };
       }
     }
@@ -459,7 +482,6 @@ export async function computeHighlightSlice(
           highlightFrames,
           leadInFrames as number,
           dropWindowFrames,
-          beatFrames,
           excludeRanges,
         )
       : null;
