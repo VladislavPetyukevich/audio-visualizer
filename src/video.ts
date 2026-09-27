@@ -31,7 +31,7 @@ interface FfmpegVideoWriterConfig {
   audioSegment?: AudioMuxSegment;
   /**
    * Audio mixed over the start of the track (e.g. the hook video's sound), from its beginning.
-   * The track fades in linearly from silence to full volume while it plays.
+   * The track fades in from silence to full volume while it plays, along an easeInQuint curve.
    */
   overlayAudio?: {
     filename: string;
@@ -47,6 +47,13 @@ const escapeSubtitleFilterPath = (subtitlePath: string) =>
     .replace(/,/g, '\\,')
     .replace(/\[/g, '\\[')
     .replace(/\]/g, '\\]');
+
+/**
+ * Fade-in from silence to full volume over `durationSeconds`, following easeInQuint:
+ * gain(x) = x^5, where x is the fraction of the fade elapsed.
+ */
+const easeInQuintFadeFilter = (durationSeconds: number) =>
+  `volume='if(gte(t,${durationSeconds}),1,pow(t/${durationSeconds},5))':eval=frame`;
 
 export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   if (!ffmpegPath) {
@@ -82,7 +89,7 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
       // layout the AAC encoder rejects. `duration=first` keeps the output as long as the track.
       '-filter_complex',
       `[0:a]aformat=channel_layouts=stereo,${trackDelayFilter ? `${trackDelayFilter},` : ''}`
-        + `afade=t=in:st=0:d=${overlaySeconds}[track];`
+        + `${easeInQuintFadeFilter(overlaySeconds)}[track];`
         + '[2:a]aformat=channel_layouts=stereo[overlay];'
         + '[track][overlay]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
       '-map', '1:v',

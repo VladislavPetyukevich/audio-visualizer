@@ -101,7 +101,7 @@ describe('video', function () {
     const hookIdx = spawnArgs.indexOf('hook.mp4');
     expect(spawnArgs.slice(hookIdx - 3, hookIdx - 1)).deep.equal(['-t', '3.2']);
     const filter = spawnArgs[spawnArgs.indexOf('-filter_complex') + 1];
-    expect(filter).to.include('[0:a]aformat=channel_layouts=stereo,afade=t=in:st=0:d=3.2[track]');
+    expect(filter).to.include("[0:a]aformat=channel_layouts=stereo,volume='if(gte(t,3.2),1,pow(t/3.2,5))':eval=frame[track]");
     expect(filter).to.include('[2:a]aformat=channel_layouts=stereo[overlay]');
     expect(filter).to.include('[track][overlay]amix=inputs=2:duration=first');
     expect(spawnArgs.join(' ')).to.include('-map 1:v -map [aout]');
@@ -141,7 +141,7 @@ describe('video', function () {
 
     expect(overlayArgs).to.not.include('-af');
     const filter = overlayArgs[overlayArgs.indexOf('-filter_complex') + 1];
-    expect(filter).to.include('[0:a]aformat=channel_layouts=stereo,adelay=1500:all=1,afade=t=in:st=0:d=3.2[track]');
+    expect(filter).to.include("[0:a]aformat=channel_layouts=stereo,adelay=1500:all=1,volume='if(gte(t,3.2),1,pow(t/3.2,5))':eval=frame[track]");
   });
 
   it('spawnFfmpegVideoWriter adds subtitles filter when subtitle file is provided', function () {
