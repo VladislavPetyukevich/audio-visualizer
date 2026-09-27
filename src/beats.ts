@@ -1,5 +1,3 @@
-import MusicTempo from 'music-tempo';
-
 export interface BeatInfo {
   isBeat: boolean;
   intensity: number;
@@ -28,14 +26,26 @@ export interface TempoEstimate {
   beatsSec?: number[];
 }
 
-export const MIN_TEMPO_BPM = 70;
+/** Detected tempo is folded (doubled/halved) into this range. */
+export const MIN_TEMPO_BPM = 90;
 export const MAX_TEMPO_BPM = 180;
-export const PREFERRED_TEMPO_BPM_MIN = 90;
-export const PREFERRED_TEMPO_BPM_MAX = 160;
 export const DEFAULT_BASS_END_INDEX = 8;
-/** Longest PCM window passed to music-tempo (seconds), taken from the start of the audio. */
+/** Longest PCM window used for tempo analysis (seconds), taken from the start of the audio. */
 export const MAX_TEMPO_ANALYSIS_SECONDS = 90;
-const TEMPO_TIME_STEP = 0.01;
+/** Band-pass (low pass then high pass) that isolates kick impulses before peak picking. */
+const TEMPO_LOW_PASS_HZ = 150;
+const TEMPO_HIGH_PASS_HZ = 100;
+/** Biquad Q in dB, as in the Web Audio BiquadFilterNode. */
+const TEMPO_FILTER_Q_DB = 1;
+/** Audio is split into parts of this length; each part contributes its loudest sample as a peak. */
+const TEMPO_PART_SECONDS = 0.5;
+/** Each peak is compared with this many following peaks to build intervals. */
+const TEMPO_INTERVAL_NEIGHBOURS = 9;
+/** Peaks are moved left by this share of a beat to land on the start of the hit, not its maximum. */
+const TEMPO_PEAK_LEFT_SHIFT_SHARE = 0.05;
+/** Peaks whose beat offset is within this many seconds of the loudest peak's offset set the phase. */
+const TEMPO_OFFSET_TOLERANCE_SEC = 0.05;
+const SILENCE_THRESHOLD = 1e-4;
 
 export const frameBassEnergy = (spectrum: number[], bassEndIndex = DEFAULT_BASS_END_INDEX): number => {
   const end = Math.min(bassEndIndex, spectrum.length);
@@ -98,29 +108,6 @@ export const createBeatDetector = (fps: number, options?: BeatDetectorOptions) =
   };
 };
 
-const foldTempoBpm = (bpm: number): number => {
-  let folded = bpm;
-  while (folded > MAX_TEMPO_BPM && folded / 2 >= MIN_TEMPO_BPM) {
-    folded /= 2;
-  }
-  while (folded < MIN_TEMPO_BPM && folded * 2 <= MAX_TEMPO_BPM) {
-    folded *= 2;
-  }
-  return folded;
-};
-
-const samplesToArray = (samples: ArrayLike<number>, maxLength: number): number[] => {
-  const n = Math.min(samples.length, maxLength);
-  if (Array.isArray(samples) && n === samples.length) {
-    return samples;
-  }
-  const audioData = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    audioData[i] = samples[i];
-  }
-  return audioData;
-};
-
 const wrapIntoPeriod = (value: number, period: number): number => {
   if (!(period > 0) || !isFinite(value)) {
     return 0;
@@ -150,6 +137,154 @@ const circularMeanPhase = (frames: number[], period: number): number => {
   return wrapIntoPeriod(phase, period);
 };
 
+/** Signed distance from `value` to `reference` on a circle of length `period`, in [-period/2, period/2). */
+const circularDiff = (value: number, reference: number, period: number): number =>
+  wrapIntoPeriod(value - reference + period / 2, period) - period / 2;
+
+type BiquadType = 'lowpass' | 'highpass';
+
+/** Biquad filter with the Web Audio BiquadFilterNode (RBJ cookbook) coefficients. */
+const biquadFilter = (
+  samples: ArrayLike<number>,
+  length: number,
+  sampleRate: number,
+  type: BiquadType,
+  frequency: number,
+  qDb: number,
+): Float32Array => {
+  const w0 = 2 * Math.PI * Math.min(frequency, sampleRate / 2 - 1) / sampleRate;
+  const cosW0 = Math.cos(w0);
+  const alpha = Math.sin(w0) / (2 * Math.pow(10, qDb / 20));
+  const a0 = 1 + alpha;
+  const b1 = (type === 'lowpass' ? 1 - cosW0 : -(1 + cosW0)) / a0;
+  const b0 = (type === 'lowpass' ? b1 / 2 : -b1 / 2);
+  const b2 = b0;
+  const a1 = (-2 * cosW0) / a0;
+  const a2 = (1 - alpha) / a0;
+
+  const out = new Float32Array(length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < length; i++) {
+    const x = samples[i];
+    const y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    out[i] = y;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+  }
+  return out;
+};
+
+interface Peak {
+  position: number;
+  volume: number;
+}
+
+/** Loudest sample of each part (`getVolume` picks how a sample is measured). */
+const partPeaks = (
+  data: Float32Array,
+  partSize: number,
+  getVolume: (sample: number) => number,
+  positionShift = 0,
+): Peak[] => {
+  const peaks: Peak[] = [];
+  for (let start = 0; start < data.length; start += partSize) {
+    const end = Math.min(start + partSize, data.length);
+    let max: Peak | null = null;
+    for (let j = start; j < end; j++) {
+      const volume = getVolume(data[j]);
+      if (!max || volume > max.volume) {
+        max = { position: j - positionShift, volume };
+      }
+    }
+    if (max) {
+      peaks.push(max);
+    }
+  }
+  return peaks;
+};
+
+/** Loudest half of the per-part peaks, in playback order. */
+const getLoudPeaks = (data: Float32Array, partSize: number): Peak[] => {
+  const peaks = partPeaks(data, partSize, Math.abs)
+    .sort((a, b) => b.volume - a.volume);
+  return peaks
+    .slice(0, Math.floor(peaks.length / 2))
+    .filter(p => p.volume > SILENCE_THRESHOLD)
+    .sort((a, b) => a.position - b.position);
+};
+
+const foldTempoBpm = (bpm: number): number => {
+  let folded = bpm;
+  while (folded <= MIN_TEMPO_BPM) {
+    folded *= 2;
+  }
+  while (folded > MAX_TEMPO_BPM) {
+    folded /= 2;
+  }
+  return folded;
+};
+
+/** Most frequent tempo among the intervals between each peak and its following neighbours. */
+const getMostFrequentTempo = (peaks: Peak[], sampleRate: number): number | null => {
+  const counts = new Map<number, number>();
+  peaks.forEach((peak, index) => {
+    for (let i = 1; index + i < peaks.length && i <= TEMPO_INTERVAL_NEIGHBOURS; i++) {
+      const distance = peaks[index + i].position - peak.position;
+      if (distance <= 0) {
+        continue;
+      }
+      const tempo = Math.round(foldTempoBpm((60 * sampleRate) / distance));
+      counts.set(tempo, (counts.get(tempo) ?? 0) + 1);
+    }
+  });
+  let best: number | null = null;
+  let bestCount = 0;
+  counts.forEach((count, tempo) => {
+    if (count > bestCount) {
+      best = tempo;
+      bestCount = count;
+    }
+  });
+  return best;
+};
+
+/**
+ * Beat offset in [0, beat) seconds: the loudest peak is taken as a strong beat, and the offsets
+ * of peaks that agree with it (within `TEMPO_OFFSET_TOLERANCE_SEC`) are averaged.
+ */
+const getBeatOffsetSec = (data: Float32Array, partSize: number, sampleRate: number, bpm: number): number => {
+  const beatSec = 60 / bpm;
+  const shift = Math.round(beatSec * TEMPO_PEAK_LEFT_SHIFT_SHARE * sampleRate);
+  const peaks = partPeaks(data, partSize, v => v, shift)
+    .filter(p => p.volume > SILENCE_THRESHOLD)
+    .sort((a, b) => b.volume - a.volume);
+  if (peaks.length === 0) {
+    return 0;
+  }
+  const refOffset = wrapIntoPeriod(peaks[0].position / sampleRate, beatSec);
+  let diffSum = 0;
+  let count = 0;
+  for (const peak of peaks) {
+    const diff = circularDiff(peak.position / sampleRate, refOffset, beatSec);
+    if (Math.abs(diff) < TEMPO_OFFSET_TOLERANCE_SEC) {
+      diffSum += diff;
+      count++;
+    }
+  }
+  return wrapIntoPeriod(refOffset + diffSum / count, beatSec);
+};
+
+/**
+ * Estimates the track tempo and beat phase (after BeatDetect.js by Arthur Beaulieu):
+ * band-pass the audio around the kick, take the loudest sample of every half second,
+ * keep the loudest half of those peaks, and pick the most frequent tempo among the intervals
+ * between neighbouring peaks. The beat phase comes from the loudest peak and the peaks aligned with it.
+ */
 export const estimateTempo = (
   samples: ArrayLike<number>,
   sampleRate: number,
@@ -159,49 +294,31 @@ export const estimateTempo = (
     return null;
   }
 
-  const maxSamples = Math.max(1, Math.floor(sampleRate * MAX_TEMPO_ANALYSIS_SECONDS));
-  const audioData = samplesToArray(samples, maxSamples);
-  const hopSize = Math.max(1, Math.round(sampleRate * TEMPO_TIME_STEP));
+  const length = Math.min(samples.length, Math.max(1, Math.floor(sampleRate * MAX_TEMPO_ANALYSIS_SECONDS)));
+  const lowPassed = biquadFilter(samples, length, sampleRate, 'lowpass', TEMPO_LOW_PASS_HZ, TEMPO_FILTER_Q_DB);
+  const data = biquadFilter(lowPassed, length, sampleRate, 'highpass', TEMPO_HIGH_PASS_HZ, TEMPO_FILTER_Q_DB);
+  const partSize = Math.max(1, Math.round(sampleRate * TEMPO_PART_SECONDS));
 
-  try {
-    const mt = new MusicTempo(audioData, {
-      hopSize,
-      timeStep: TEMPO_TIME_STEP,
-      minBeatInterval: 60 / MAX_TEMPO_BPM,
-      maxBeatInterval: 60 / MIN_TEMPO_BPM,
-    });
-    const beatInterval = Number(mt.beatInterval);
-    let bpm = Number(mt.tempo);
-    if (!(bpm > 0) && beatInterval > 0) {
-      bpm = 60 / beatInterval;
-    }
-    if (!(bpm > 0)) {
-      return null;
-    }
-
-    bpm = foldTempoBpm(bpm);
-    if (bpm < MIN_TEMPO_BPM * 0.9 || bpm > MAX_TEMPO_BPM * 1.1) {
-      return null;
-    }
-
-    const periodFrames = fps * 60 / bpm;
-    const beatsSec = (mt.beats ?? [])
-      .map(t => Number(t))
-      .filter(t => t >= 0 && isFinite(t));
-    const beatFrames = beatsSec.map(t => t * fps);
-    const phaseFrame = beatFrames.length > 0
-      ? wrapIntoPeriod(circularMeanPhase(beatFrames, periodFrames), periodFrames)
-      : 0;
-
-    return {
-      bpm: Math.round(bpm),
-      periodFrames,
-      phaseFrame,
-      ...(beatsSec.length > 0 ? { beatsSec } : {}),
-    };
-  } catch {
+  const bpm = getMostFrequentTempo(getLoudPeaks(data, partSize), sampleRate);
+  if (bpm === null) {
     return null;
   }
+
+  const beatSec = 60 / bpm;
+  const offsetSec = getBeatOffsetSec(data, partSize, sampleRate, bpm);
+  const durationSec = length / sampleRate;
+  const beatsSec: number[] = [];
+  for (let t = offsetSec; t < durationSec; t += beatSec) {
+    beatsSec.push(t);
+  }
+
+  const periodFrames = fps * beatSec;
+  return {
+    bpm,
+    periodFrames,
+    phaseFrame: wrapIntoPeriod(offsetSec * fps, periodFrames),
+    ...(beatsSec.length > 0 ? { beatsSec } : {}),
+  };
 };
 
 export const shiftTempoPhase = (
