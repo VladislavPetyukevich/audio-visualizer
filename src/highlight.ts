@@ -24,6 +24,8 @@ const GRID_ONSET_SNAP_SHARE = 0.2;
 export const DROP_WINDOW_SEC = 4;
 /** Share of the track's biggest energy rise a peak needs to count as a drop. */
 const MIN_DROP_SCORE_SHARE = 0.5;
+/** With a tempo grid, a drop moves onto a beat within this share of a beat, so the hook ends on the beat. */
+const DROP_BEAT_SNAP_SHARE = 0.2;
 
 /** Tempo grid used to snap highlight cuts to beats (subset of `TempoEstimate`). */
 export interface HighlightBeatGrid {
@@ -279,6 +281,31 @@ function findBestDropSegment(
   return findBest(false) ?? findBest(true);
 }
 
+/**
+ * Moves a drop (and its window start with it) onto the nearest beat within `DROP_BEAT_SNAP_SHARE`
+ * of a beat. Only done with a tempo grid: raw onsets alone are too unreliable to override the
+ * energy onset. A lead-in that fit in the track is never pushed back past its start.
+ */
+export function snapDropToBeat(
+  drop: { startFrame: number; dropFrame: number },
+  beatFrames: number[],
+  periodFrames?: number,
+): void {
+  if (!periodFrames || !(periodFrames > 0) || !isFinite(periodFrames)) {
+    return;
+  }
+  const beat = nearestOnset(beatFrames, drop.dropFrame);
+  if (beat === null || Math.abs(beat - drop.dropFrame) > periodFrames * DROP_BEAT_SNAP_SHARE) {
+    return;
+  }
+  const startFrame = drop.startFrame + (beat - drop.dropFrame);
+  if (startFrame < 0 && drop.startFrame >= 0) {
+    return;
+  }
+  drop.startFrame = startFrame;
+  drop.dropFrame = beat;
+}
+
 function nearestOnset(sortedOnsets: number[], frame: number): number | null {
   let lo = 0;
   let hi = sortedOnsets.length;
@@ -415,7 +442,8 @@ export function snapSegmentToBeats(
  * With `leadInFrames` (e.g. a hook video's length), each window is instead built around a detected
  * drop: it starts `leadInFrames` before the drop, so the whole lead-in plays and ends on the drop
  * (see `HighlightRun.leadInFrames`), and runs ~15s past the drop, so the lead-in is added on top of
- * the ~15s rather than taken out of it. When no drop fits, the lead-in is put before the energy
+ * the ~15s rather than taken out of it. With a tempo grid, the drop is moved onto a nearby beat
+ * (see `snapDropToBeat`), so the hook ends on the beat. When no drop fits, the lead-in is put before the energy
  * window instead. The lead-in is never shortened: where it reaches back past the track start,
  * the run starts at a negative frame and that part is silent (see `buildHighlightRun`).
  */
@@ -496,6 +524,7 @@ export async function computeHighlightSlice(
         )
       : null;
     if (drop) {
+      snapDropToBeat(drop, beatFrames, beatGrid?.periodFrames);
       // Only the part from the drop on is ~15s; its end is snapped to a beat.
       const main = snapSegmentToBeats(
         { startFrame: drop.dropFrame, highlightFrames },

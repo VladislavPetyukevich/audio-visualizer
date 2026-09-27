@@ -5,6 +5,7 @@ import {
   MAX_BEAT_SNAP_SEC,
   buildBeatCandidates,
   snapSegmentToBeats,
+  snapDropToBeat,
 } from '../highlight';
 
 const dummySpectrums = (n: number) => Array.from({ length: n }, () => [0]);
@@ -248,6 +249,20 @@ describe('computeHighlightSlice', function() {
     expect(result.runs[0].leadInFrames).equal(43);
   });
 
+  it('ends the lead-in on a nearby grid beat when a tempo grid is given', async function() {
+    const fps = 10;
+    const totalFrames = 1000;
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 602, totalFrames);
+    const beats = Array.from({ length: 200 }, (_, i) => ({ frameIndex: i * 5, intensity: 1 }));
+    // Grid beats every 10 frames on multiples of 10: 600 is 2 frames (0.2 beat) from the onset.
+    const grid = { periodFrames: 10, phaseFrame: 0 };
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, beats, 1, grid, 43);
+
+    expect(result.runs[0].startFrame).equal(557);
+    expect(result.runs[0].leadInFrames).equal(43);
+  });
+
   it('keeps the full lead-in rather than ending it past the drop or on a weak rise', async function() {
     const fps = 10;
     const totalFrames = 600;
@@ -352,5 +367,31 @@ describe('snapSegmentToBeats', function() {
   it('leaves a segment unchanged when no beat is close enough', function() {
     const seg = { startFrame: 100, highlightFrames: 200 };
     expect(snapSegmentToBeats(seg, 1000, [10, 900], 20)).deep.equal(seg);
+  });
+});
+
+describe('snapDropToBeat', function() {
+  it('moves the drop and its start together onto a beat within a fifth of a beat', function() {
+    const drop = { startFrame: 60, dropFrame: 103 };
+    snapDropToBeat(drop, [80, 100, 120], 20);
+    expect(drop).deep.equal({ startFrame: 57, dropFrame: 100 });
+  });
+
+  it('keeps the drop when the nearest beat is too far', function() {
+    const drop = { startFrame: 60, dropFrame: 105 };
+    snapDropToBeat(drop, [80, 100, 120], 20);
+    expect(drop).deep.equal({ startFrame: 60, dropFrame: 105 });
+  });
+
+  it('keeps the drop without a tempo period', function() {
+    const drop = { startFrame: 60, dropFrame: 101 };
+    snapDropToBeat(drop, [80, 100, 120]);
+    expect(drop).deep.equal({ startFrame: 60, dropFrame: 101 });
+  });
+
+  it('does not push a lead-in that fit in the track back past its start', function() {
+    const drop = { startFrame: 1, dropFrame: 43 };
+    snapDropToBeat(drop, [40], 20);
+    expect(drop).deep.equal({ startFrame: 1, dropFrame: 43 });
   });
 });
