@@ -101,10 +101,10 @@ describe('video', function () {
     spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
 
     const swsIdx = spawnArgs.indexOf('-sws_flags');
-    expect(spawnArgs[swsIdx + 1]).to.equal('lanczos');
+    expect(spawnArgs[swsIdx + 1]).to.equal('-y');
     const vfIdx = spawnArgs.indexOf('-vf');
     expect(spawnArgs[vfIdx + 1]).to.equal(
-      'hqdn3d=4:4:3:3,unsharp=5:5:0.8:5:5:0.4,eq=contrast=1.1:saturation=1.2',
+      'hqdn3d=4:4:3:3,unsharp=5:5:0.8:5:5:0.0,eq=contrast=1.15:saturation=1.2:brightness=0.02',
     );
   });
 

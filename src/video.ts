@@ -111,11 +111,10 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
   );
   const videoFilters: string[] = [];
   if (config.enhanceFilters) {
-    args.push('-sws_flags', 'lanczos');
     videoFilters.push(
       'hqdn3d=4:4:3:3',
-      'unsharp=5:5:0.8:5:5:0.4',
-      'eq=contrast=1.1:saturation=1.2',
+      'unsharp=5:5:0.8:5:5:0.0',
+      'eq=contrast=1.15:saturation=1.2:brightness=0.02',
     );
   }
   if (config.subtitleFilename) {
