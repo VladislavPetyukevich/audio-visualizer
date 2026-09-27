@@ -23,6 +23,8 @@ interface FfmpegVideoWriterConfig {
   fps: number;
   crf?: string;
   preset?: string;
+  /** Denoise, sharpen and boost contrast/saturation of the output video. */
+  enhanceFilters?: boolean;
   onStderr?: (data: any) => any;
   /** When set with `audioDurationSeconds`, passed to ffmpeg before `-i` for muxed highlight. */
   audioSeekSeconds?: number;
@@ -107,13 +109,22 @@ export const spawnFfmpegVideoWriter = (config: FfmpegVideoWriterConfig) => {
     '-preset', preset,
     '-shortest',
   );
+  const videoFilters: string[] = [];
+  if (config.enhanceFilters) {
+    args.push('-sws_flags', 'lanczos');
+    videoFilters.push(
+      'hqdn3d=4:4:3:3',
+      'unsharp=5:5:0.8:5:5:0.4',
+      'eq=contrast=1.1:saturation=1.2',
+    );
+  }
   if (config.subtitleFilename) {
     const subPath = escapeSubtitleFilterPath(config.subtitleFilename);
     const alignment = config.subtitleAlignmentAss ?? 2;
-    args.push(
-      '-vf',
-      `subtitles='${subPath}':force_style='Alignment=${alignment}'`,
-    );
+    videoFilters.push(`subtitles='${subPath}':force_style='Alignment=${alignment}'`);
+  }
+  if (videoFilters.length > 0) {
+    args.push('-vf', videoFilters.join(','));
   }
   args.push(config.videoFileName);
   const ffmpeg = spawn(ffmpegPath, args);

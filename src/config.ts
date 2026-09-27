@@ -190,6 +190,9 @@ export const getFPS = (config: Config) =>
 export const getOutputResolution = (config: Config) =>
   config.outVideo.resolution;
 
+export const getEnhanceFilters = (config: Config) =>
+  config.outVideo.enhanceFilters === true;
+
 export const getSpectrumBusMargin = () => defaults.spectrumBusMargin;
 
 const getSpectrumWidth = (config: Config) =>

@@ -21,6 +21,7 @@ import {
   getFrame_processing_delay,
   getVideoTimeouts,
   getOutputResolution,
+  getEnhanceFilters,
   rotationAliasValues,
   getSpectrumRotation,
   getSpectrumEffect,
@@ -101,6 +102,7 @@ export interface Config {
       width: number;
       height: number;
     };
+    enhanceFilters?: boolean;
     spectrum?: {
       width?: SpectrumSizeValue;
       height?: SpectrumSizeValue;
@@ -784,6 +786,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           }),
           ...(ffmpeg_cfr && { crf: ffmpeg_cfr }),
           ...(ffmpeg_preset && { preset: ffmpeg_preset }),
+          enhanceFilters: getEnhanceFilters(config),
         });
         const exitPromise = waitForProcessExit(
           ffmpegVideoWriter,

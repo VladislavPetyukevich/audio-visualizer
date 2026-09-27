@@ -70,6 +70,44 @@ describe('video', function () {
     expect(spawnArgs[tIdx + 1]).to.equal('15');
   });
 
+  it('spawnFfmpegVideoWriter adds enhance filters only when enabled', function () {
+    const childProcessReadableStream = new Readable();
+    childProcessReadableStream._read = () => { };
+    const childProcessWritableStream = new Writable();
+    (<Pipe>childProcessWritableStream.pipe) = () => childProcessWritableStream;
+
+    childProcessStream.stdin = childProcessWritableStream;
+    childProcessStream.stderr = childProcessReadableStream;
+
+    let spawnArgs: string[] = [];
+    const spawnStub = child_process.spawn as SinonStub;
+    spawnStub.callsFake((_cmd: string, args: string[]) => {
+      spawnArgs = args;
+      return childProcessStream as ChildProcessWithoutNullStreams;
+    });
+
+    spawnFfmpegVideoWriter({ audioFilename: 'audio.mp3', videoFileName: 'out.mp4', fps: 25 });
+    expect(spawnArgs).to.not.include('-vf');
+    expect(spawnArgs).to.not.include('-sws_flags');
+
+    spawnFfmpegVideoWriter({
+      audioFilename: 'audio.mp3',
+      videoFileName: 'out.mp4',
+      fps: 25,
+      enhanceFilters: true,
+    });
+
+    spawnStub.resetBehavior();
+    spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
+
+    const swsIdx = spawnArgs.indexOf('-sws_flags');
+    expect(spawnArgs[swsIdx + 1]).to.equal('lanczos');
+    const vfIdx = spawnArgs.indexOf('-vf');
+    expect(spawnArgs[vfIdx + 1]).to.equal(
+      'hqdn3d=4:4:3:3,unsharp=5:5:0.8:5:5:0.4,eq=contrast=1.1:saturation=1.2',
+    );
+  });
+
   it('spawnFfmpegVideoWriter mixes overlay audio while the track fades in', function () {
     const childProcessReadableStream = new Readable();
     childProcessReadableStream._read = () => { };
