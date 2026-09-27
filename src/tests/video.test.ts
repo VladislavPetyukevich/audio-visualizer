@@ -107,6 +107,43 @@ describe('video', function () {
     expect(spawnArgs.join(' ')).to.include('-map 1:v -map [aout]');
   });
 
+  it('spawnFfmpegVideoWriter delays the track by the audio segment delay', function () {
+    const childProcessReadableStream = new Readable();
+    childProcessReadableStream._read = () => { };
+    const childProcessWritableStream = new Writable();
+    (<Pipe>childProcessWritableStream.pipe) = () => childProcessWritableStream;
+
+    childProcessStream.stdin = childProcessWritableStream;
+    childProcessStream.stderr = childProcessReadableStream;
+
+    const spawnStub = child_process.spawn as SinonStub;
+    const run = (overlay: boolean) => {
+      let spawnArgs: string[] = [];
+      spawnStub.callsFake((_cmd: string, args: string[]) => {
+        spawnArgs = args;
+        return childProcessStream as ChildProcessWithoutNullStreams;
+      });
+      spawnFfmpegVideoWriter({
+        audioFilename: 'audio.mp3',
+        videoFileName: 'out.mp4',
+        fps: 25,
+        audioSegment: { seekSeconds: 0, durationSeconds: 12, delaySeconds: 1.5 },
+        ...(overlay && { overlayAudio: { filename: 'hook.mp4', durationSeconds: 3.2 } }),
+      });
+      return spawnArgs;
+    };
+
+    const plainArgs = run(false);
+    expect(plainArgs[plainArgs.indexOf('-af') + 1]).equal('adelay=1500:all=1');
+    const overlayArgs = run(true);
+    spawnStub.resetBehavior();
+    spawnStub.returns(childProcessStream as ChildProcessWithoutNullStreams);
+
+    expect(overlayArgs).to.not.include('-af');
+    const filter = overlayArgs[overlayArgs.indexOf('-filter_complex') + 1];
+    expect(filter).to.include('[0:a]aformat=channel_layouts=stereo,adelay=1500:all=1,afade=t=in:st=0:d=3.2[track]');
+  });
+
   it('spawnFfmpegVideoWriter adds subtitles filter when subtitle file is provided', function () {
     const childProcessReadableStream = new Readable();
     childProcessReadableStream._read = () => { };
@@ -320,20 +357,9 @@ describe('video', function () {
     expect(reason).equal('waitForProcessExit timeout (5ms)');
   });
 
-  it('computeHookFrameCount plays the full hook without beats', function () {
+  it('computeHookFrameCount plays the full hook', function () {
     expect(computeHookFrameCount(2, 30, 300)).equal(60);
     expect(computeHookFrameCount(20, 30, 300)).equal(300);
-  });
-
-  it('computeHookFrameCount cuts the hook on the last beat before its end', function () {
-    expect(computeHookFrameCount(2, 30, 300, [15, 35, 55, 75])).equal(55);
-    expect(computeHookFrameCount(2, 30, 300, [60, 80])).equal(60);
-  });
-
-  it('computeHookFrameCount plays the full hook when no beat falls inside it', function () {
-    expect(computeHookFrameCount(2, 30, 300, [70, 90])).equal(60);
-    expect(computeHookFrameCount(2, 30, 300, [])).equal(60);
-    expect(computeHookFrameCount(20, 30, 300, [100, 200])).equal(300);
   });
 
   it('getCutFrameIndices skips the opening segment', function () {

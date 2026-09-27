@@ -76,9 +76,10 @@ export interface Config {
      */
     path: string | string[];
     /**
-     * Video played once before the `path` video(s). Plays in full, or when `audio.autoHighlight`
+     * Video played once, always in full, before the `path` video(s). When `audio.autoHighlight`
      * is true, each highlight is chosen so the hook ends on a detected drop and `path` starts with it,
      * playing ~15s from the drop (the hook comes on top of the ~15s rather than being counted in it).
+     * If the drop is closer to the track start than the hook's length, the track is preceded by silence.
      * The hook's sound, if any, is mixed over the track, which fades in from silence to full volume while the hook plays.
      */
     hookPath?: string;
@@ -294,9 +295,7 @@ async function prepareBackgroundForRender(params: {
   startVideoIndex?: number;
   /** Video played once before the background videos. */
   hookVideoPath?: string;
-  /** When set, the hook is cut on the last of these frames not past its natural end. */
-  hookBeatFrameIndices?: number[];
-  /** Exact hook length in frames (e.g. up to a detected drop); overrides `hookBeatFrameIndices`. */
+  /** Hook length in frames (the lead-in up to a detected drop); the full hook when unset. */
   hookFrameCount?: number;
 }): Promise<{
   backgroundWidth: number;
@@ -325,7 +324,6 @@ async function prepareBackgroundForRender(params: {
     tempo,
     startVideoIndex = 0,
     hookVideoPath,
-    hookBeatFrameIndices,
     hookFrameCount,
   } = params;
 
@@ -339,13 +337,13 @@ async function prepareBackgroundForRender(params: {
     const encodeVideoFrame = createBgrFrameEncoder({ width: backgroundWidth, height: backgroundHeight });
 
     const hookVideoInfo = hookVideoPath ? await getVideoInfo(hookVideoPath) : undefined;
-    // Real frame count, so the hook is cut short rather than wrapping back to its start.
+    // Real frame count, so the hook never has to wrap back to its start.
     const hookAvailableFrames = hookVideoPath ? await getVideoFrameCount(hookVideoPath, fps) : 0;
     const hookFrames = !hookVideoInfo
       ? 0
       : hookFrameCount !== undefined
         ? Math.min(hookFrameCount, hookAvailableFrames, framesCount)
-        : computeHookFrameCount(hookAvailableFrames / fps, fps, framesCount, hookBeatFrameIndices);
+        : computeHookFrameCount(hookAvailableFrames / fps, fps, framesCount);
     // The background videos fill the frames after the hook, on a timeline starting at the hook's end.
     const mainFramesCount = framesCount - hookFrames;
     const mainBeatFrameIndices: number[] = [];
@@ -727,10 +725,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           ? tempoForWindow(trackTempo, pass.startFrame, FPS, pass.frameCount, pass.beatIndices)
           : null;
         const tempo = autoEditVideo ? windowTempo : null;
-        // With autoHighlight, the hook ends on a beat so the switch to the main video is in time.
-        const hookBeatFrameIndices = hookVideoPath && autoHighlight
-          ? (windowTempo ? beatGridFrameIndices(windowTempo, pass.frameCount) : pass.beatIndices)
-          : undefined;
         const shakeAmplitudes = tempo
           ? buildCutShakeAmplitudes(tempo.periodFrames)
           : undefined;
@@ -760,7 +754,6 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
           // Each separate highlight output opens with a different video from the array.
           startVideoIndex: passIndex,
           hookVideoPath,
-          ...(hookBeatFrameIndices ? { hookBeatFrameIndices } : {}),
           ...(pass.leadInFrames !== undefined ? { hookFrameCount: pass.leadInFrames } : {}),
         });
         reportRenderProgress();

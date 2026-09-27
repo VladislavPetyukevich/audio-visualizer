@@ -36,6 +36,8 @@ export interface HighlightBeatGrid {
 export interface HighlightAudioSegment {
   seekSeconds: number;
   durationSeconds: number;
+  /** Silence played before the audio, for a lead-in reaching back past the track start. */
+  delaySeconds?: number;
 }
 
 /** One auto-highlight segment before concatenation (for separate output files). */
@@ -46,10 +48,14 @@ export interface HighlightRun {
   beatFrameIndices: number[];
   beatIntensities: number[];
   audioSegment: HighlightAudioSegment;
-  /** Frames from the run start to the detected drop; set when a lead-in was requested and a drop fits. */
+  /** Frames from the run start to the detected drop (or window start); set when a lead-in was requested. */
   leadInFrames?: number;
 }
 
+/**
+ * `seg.startFrame` may be negative (a lead-in reaching back past the track start): those
+ * frames get silent spectrums and are played as silence before the audio.
+ */
 function buildHighlightRun(
   fps: number,
   seg: { startFrame: number; highlightFrames: number; leadInFrames?: number },
@@ -57,7 +63,12 @@ function buildHighlightRun(
   beatEvents: BeatFrameEvent[],
 ): HighlightRun {
   const { startFrame, highlightFrames, leadInFrames } = seg;
-  const spectrumsSlice = spectrums.slice(startFrame, startFrame + highlightFrames);
+  const silentFrames = Math.max(0, -startFrame);
+  const silentSpectrum = new Array<number>(spectrums[0]?.length ?? 0).fill(0);
+  const spectrumsSlice = [
+    ...Array.from({ length: silentFrames }, () => silentSpectrum.slice()),
+    ...spectrums.slice(startFrame + silentFrames, startFrame + highlightFrames),
+  ];
   const beatsInWindow = beatEvents
     .filter(b => b.frameIndex >= startFrame && b.frameIndex < startFrame + highlightFrames)
     .sort((a, b) => a.frameIndex - b.frameIndex);
@@ -70,8 +81,9 @@ function buildHighlightRun(
     beatFrameIndices,
     beatIntensities,
     audioSegment: {
-      seekSeconds: startFrame / fps,
-      durationSeconds: highlightFrames / fps,
+      seekSeconds: (startFrame + silentFrames) / fps,
+      durationSeconds: (highlightFrames - silentFrames) / fps,
+      ...(silentFrames > 0 && { delaySeconds: silentFrames / fps }),
     },
     ...(leadInFrames !== undefined && { leadInFrames }),
   };
@@ -200,8 +212,8 @@ async function findBestHighlightStart(
  * beat), and only peaks count so a frame just past a drop is never taken for one. Peaks rising
  * less than `MIN_DROP_SCORE_SHARE` of the biggest one are not drops. The window
  * starts exactly `leadInFrames` before the drop, so the whole lead-in plays. Drops too close to
- * the track start for the full lead-in are only used (with the lead-in shortened to reach the
- * start) when no other drop fits.
+ * the track start for the full lead-in are only used (with the window starting before the track,
+ * i.e. at a negative frame) when no other drop fits.
  */
 function findBestDropSegment(
   energies: Float64Array,
@@ -243,15 +255,14 @@ function findBestDropSegment(
   const maxScore = dropFrames.reduce((max, f) => Math.max(max, scores[f]), 0);
   const strongDropFrames = dropFrames.filter(f => scores[f] >= maxScore * MIN_DROP_SCORE_SHARE);
 
-  const findBest = (allowShortLeadIn: boolean) => {
+  const findBest = (allowBeforeTrackStart: boolean) => {
     let best: { startFrame: number; dropFrame: number } | null = null;
     let bestScore = -Infinity;
     for (const dropFrame of strongDropFrames) {
-      const earliestStart = dropFrame - leadInFrames;
-      if (earliestStart < 0 && !allowShortLeadIn) {
+      const startFrame = dropFrame - leadInFrames;
+      if (startFrame < 0 && !allowBeforeTrackStart) {
         continue;
       }
-      const startFrame = Math.max(0, earliestStart);
       if (
         dropFrame + mainFrames > totalFrames ||
         rangesOverlap(startFrame, dropFrame + mainFrames, excludeRanges)
@@ -405,7 +416,8 @@ export function snapSegmentToBeats(
  * drop: it starts `leadInFrames` before the drop, so the whole lead-in plays and ends on the drop
  * (see `HighlightRun.leadInFrames`), and runs ~15s past the drop, so the lead-in is added on top of
  * the ~15s rather than taken out of it. When no drop fits, the lead-in is put before the energy
- * window instead (shortened only where the track start or an earlier window is in the way).
+ * window instead. The lead-in is never shortened: where it reaches back past the track start,
+ * the run starts at a negative frame and that part is silent (see `buildHighlightRun`).
  */
 export async function computeHighlightSlice(
   fps: number,
@@ -443,23 +455,21 @@ export async function computeHighlightSlice(
   }
 
   if (totalFrames <= highlightFramesTarget) {
-    const audioSegments: HighlightAudioSegment[] = [
-      {
-        seekSeconds: 0,
-        durationSeconds: totalFrames / fps,
-      },
-    ];
-    const fullSeg = { startFrame: 0, highlightFrames: totalFrames };
+    // The whole track follows the lead-in, which is silent as it all comes before the track start.
+    const leadIn = leadInFrames !== undefined && leadInFrames > 0 ? leadInFrames : 0;
+    const fullSeg = leadIn > 0
+      ? { startFrame: -leadIn, highlightFrames: leadIn + totalFrames, leadInFrames: leadIn }
+      : { startFrame: 0, highlightFrames: totalFrames };
     const fullRun = buildHighlightRun(fps, fullSeg, spectrums, beatEvents);
     return {
-      startFrame: 0,
-      highlightFrames: totalFrames,
-      spectrums: spectrums.slice(),
+      startFrame: fullRun.startFrame,
+      highlightFrames: fullRun.highlightFrames,
+      spectrums: fullRun.spectrums,
       beatFrameIndices: fullRun.beatFrameIndices,
       beatIntensities: fullRun.beatIntensities,
-      audioSeekSeconds: 0,
-      audioDurationSeconds: totalFrames / fps,
-      audioSegments,
+      audioSeekSeconds: fullRun.audioSegment.seekSeconds,
+      audioDurationSeconds: fullRun.audioSegment.durationSeconds,
+      audioSegments: [fullRun.audioSegment],
       runs: [fullRun],
     };
   }
@@ -524,14 +534,9 @@ export async function computeHighlightSlice(
       maxShiftFrames,
       beatGrid?.periodFrames,
     );
-    // The lead-in plays before the window, up to the track start or an earlier window's end.
-    const prevEnd = rawSegments
-      .map(seg => seg.startFrame + seg.highlightFrames)
-      .filter(end => end <= snapped.startFrame)
-      .reduce((a, b) => Math.max(a, b), 0);
-    const windowLeadIn = useDrops
-      ? Math.min(leadInFrames as number, snapped.startFrame - prevEnd)
-      : 0;
+    // The whole lead-in plays before the window, even over an earlier window (each highlight with
+    // a lead-in is its own output) or before the track start (as silence).
+    const windowLeadIn = useDrops ? leadInFrames as number : 0;
     rawSegments.push(windowLeadIn > 0
       ? {
           startFrame: snapped.startFrame - windowLeadIn,
@@ -541,7 +546,7 @@ export async function computeHighlightSlice(
       : snapped);
     // Padded so the next raw window, once snapped, cannot reach back into this one.
     excludeRanges.push({
-      start: snapped.startFrame - windowLeadIn - maxShiftFrames,
+      start: snapped.startFrame - maxShiftFrames,
       endExclusive: snapped.startFrame + snapped.highlightFrames + maxShiftFrames,
     });
   }
@@ -557,25 +562,15 @@ export async function computeHighlightSlice(
   const beatIntensities: number[] = [];
   let outOffset = 0;
 
-  for (const seg of rawSegments) {
-    const chunk = spectrums.slice(seg.startFrame, seg.startFrame + seg.highlightFrames);
-    slicedSpectrums.push(...chunk);
-
-    const beatsInSeg = beatEvents
-      .filter(b => b.frameIndex >= seg.startFrame && b.frameIndex < seg.startFrame + seg.highlightFrames)
-      .sort((a, b) => a.frameIndex - b.frameIndex);
-    for (const b of beatsInSeg) {
-      beatFrameIndices.push(b.frameIndex - seg.startFrame + outOffset);
-      beatIntensities.push(b.intensity);
-    }
-    outOffset += seg.highlightFrames;
+  for (const run of runs) {
+    slicedSpectrums.push(...run.spectrums);
+    beatFrameIndices.push(...run.beatFrameIndices.map(frameIndex => frameIndex + outOffset));
+    beatIntensities.push(...run.beatIntensities);
+    outOffset += run.highlightFrames;
   }
 
   const totalHighlightFrames = slicedSpectrums.length;
-  const audioSegments: HighlightAudioSegment[] = rawSegments.map(seg => ({
-    seekSeconds: seg.startFrame / fps,
-    durationSeconds: seg.highlightFrames / fps,
-  }));
+  const audioSegments: HighlightAudioSegment[] = runs.map(run => run.audioSegment);
 
   const first = audioSegments[0] ?? { seekSeconds: 0, durationSeconds: 0 };
 
