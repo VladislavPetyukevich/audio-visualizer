@@ -146,7 +146,7 @@ export interface SceneChange {
   ptsTime: number;
 }
 
-export const detectSceneChanges = (videoPath: string, threshold = 0.4): Promise<SceneChange[]> =>
+export const detectSceneChanges = (videoPath: string, threshold = 0.3): Promise<SceneChange[]> =>
   new Promise((resolve, reject) => {
     if (!ffmpegPath) {
       reject(new Error('ffmpeg path not found'));
@@ -496,7 +496,7 @@ export interface VideoSegment {
   videoIndex?: number;
 }
 
-const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, minDuration = 2): SceneChange[] => {
+const mergeSmallScenes = (sceneChanges: SceneChange[], videoDuration: number, minDuration = 1): SceneChange[] => {
   if (sceneChanges.length === 0) return [];
   const merged: SceneChange[] = [sceneChanges[0]];
   for (let i = 1; i < sceneChanges.length; i++) {
