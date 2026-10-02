@@ -698,6 +698,90 @@ export const applyCameraShake = (
   }
 };
 
+/** Scale of the cut frame; the zoom then eases out back to 1 (no zoom). */
+export const CUT_ZOOM_PEAK_SCALE = 1.15;
+export const MIN_CUT_ZOOM_FRAMES = 3;
+export const ZOOM_DURATION_BEAT_FRACTION = 1 / 3;
+/** Frame count used when the tempo is unknown. */
+export const DEFAULT_CUT_ZOOM_FRAMES = 6;
+
+export const buildCutZoomScales = (periodFrames: number): number[] => {
+  const frameCount = periodFrames > 0
+    ? Math.max(MIN_CUT_ZOOM_FRAMES, Math.round(periodFrames * ZOOM_DURATION_BEAT_FRACTION))
+    : DEFAULT_CUT_ZOOM_FRAMES;
+  const scales: number[] = [];
+  for (let i = 0; i < frameCount; i++) {
+    const remaining = 1 - i / frameCount;
+    scales.push(1 + (CUT_ZOOM_PEAK_SCALE - 1) * remaining * remaining);
+  }
+  return scales;
+};
+
+export const getCutZoomScale = (
+  frameIndex: number,
+  cutFrames: ReadonlySet<number>,
+  scales: ReadonlyArray<number>,
+): number => {
+  for (let offset = 0; offset < scales.length; offset++) {
+    if (cutFrames.has(frameIndex - offset)) {
+      return scales[offset];
+    }
+  }
+  return 1;
+};
+
+/** Scales the frame around its center by `scale` (> 1 zooms in), with bilinear sampling. */
+export const applyCutZoom = (
+  imageDstBuffer: EncodedBmp,
+  width: number,
+  height: number,
+  scale: number,
+) => {
+  if (!(scale > 1)) {
+    return;
+  }
+  const { shiftPos, rowBytes, data } = imageDstBuffer;
+  const pixelBytes = height * rowBytes;
+  const sourcePixels = Buffer.allocUnsafe(pixelBytes);
+  data.copy(sourcePixels, 0, shiftPos, shiftPos + pixelBytes);
+
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+  const inverseScale = 1 / scale;
+  const srcX0 = new Int32Array(width);
+  const srcX1 = new Int32Array(width);
+  const fracX = new Float32Array(width);
+  for (let x = 0; x < width; x++) {
+    const srcX = centerX + (x - centerX) * inverseScale;
+    const x0 = Math.floor(srcX);
+    srcX0[x] = clampInt(x0, 0, width - 1) * 3;
+    srcX1[x] = clampInt(x0 + 1, 0, width - 1) * 3;
+    fracX[x] = srcX - x0;
+  }
+
+  for (let y = 0; y < height; y++) {
+    const srcY = centerY + (y - centerY) * inverseScale;
+    const y0 = Math.floor(srcY);
+    const fy = srcY - y0;
+    const row0 = clampInt(y0, 0, height - 1) * rowBytes;
+    const row1 = clampInt(y0 + 1, 0, height - 1) * rowBytes;
+    const dstRow = shiftPos + y * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const fx = fracX[x];
+      const i00 = row0 + srcX0[x];
+      const i01 = row0 + srcX1[x];
+      const i10 = row1 + srcX0[x];
+      const i11 = row1 + srcX1[x];
+      const dstIndex = dstRow + x * 3;
+      for (let c = 0; c < 3; c++) {
+        const top = sourcePixels[i00 + c] + (sourcePixels[i01 + c] - sourcePixels[i00 + c]) * fx;
+        const bottom = sourcePixels[i10 + c] + (sourcePixels[i11 + c] - sourcePixels[i10 + c]) * fx;
+        data[dstIndex + c] = Math.round(top + (bottom - top) * fy);
+      }
+    }
+  }
+};
+
 const hexToRgb = (hex: String) => {
   const red = parseInt(hex.substring(1, 3), 16);
   const green = parseInt(hex.substring(3, 5), 16);

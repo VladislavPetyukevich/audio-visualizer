@@ -101,6 +101,9 @@ export const getAutoEditVideo = (config: Config) =>
 export const getCameraShakeEnabled = (config: Config) =>
   config.video?.cameraShake !== false;
 
+export const getCutZoomEnabled = (config: Config) =>
+  config.video?.cutZoom === true;
+
 export const getOutVideoPath = (config: Config) =>
   path.resolve(config.outVideo.path);
 

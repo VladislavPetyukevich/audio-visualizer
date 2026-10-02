@@ -36,11 +36,12 @@ import {
   getPolarOpacityParsed,
   getAutoEditVideo,
   getCameraShakeEnabled,
+  getCutZoomEnabled,
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor, pcmU8ToFloatSamples } from './audio';
-import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes, CAMERA_SHAKE_DELAY_SECONDS, CAMERA_SHAKE_EVERY_BEATS } from './image';
+import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes, CAMERA_SHAKE_DELAY_SECONDS, CAMERA_SHAKE_EVERY_BEATS, applyCutZoom, getCutZoomScale, buildCutZoomScales } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, computeHookFrameCount, getVideoFrameCount, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile, VideoSegment } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
@@ -87,6 +88,8 @@ export interface Config {
     autoEdit?: boolean;
     /** When `autoEdit` is true, disables the brief camera shake applied on cuts, or every 2 beats when there are no cuts (default true). */
     cameraShake?: boolean;
+    /** When `autoEdit` is true, starts each cut zoomed in and quickly zooms out to normal, or every 2 beats when there are no cuts (default false). */
+    cutZoom?: boolean;
   };
   outVideo: {
     path: string;
@@ -650,6 +653,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     }
 
     const cameraShakeEnabled = getCameraShakeEnabled(config);
+    const cutZoomEnabled = getCutZoomEnabled(config);
     const shakeDelayFrames = Math.round(FPS * CAMERA_SHAKE_DELAY_SECONDS);
 
     const separateHighlightFiles =
@@ -730,6 +734,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const shakeAmplitudes = tempo
           ? buildCutShakeAmplitudes(tempo.periodFrames)
           : undefined;
+        const zoomScales = buildCutZoomScales(tempo ? tempo.periodFrames : 0);
         const {
           backgroundWidth,
           backgroundHeight,
@@ -763,10 +768,12 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         const beatShakeFrames = () => (tempo
           ? beatGridFrameIndices(tempo, pass.frameCount, CAMERA_SHAKE_EVERY_BEATS)
           : pass.beatIndices.filter(frameIndex => frameIndex > 0).filter((_, i) => i % CAMERA_SHAKE_EVERY_BEATS === 0));
+        const effectFrames = () => (cutFrameIndices.length > 0 ? cutFrameIndices : beatShakeFrames());
         const shakeFrames = new Set(
-          autoEditVideo && cameraShakeEnabled
-            ? (cutFrameIndices.length > 0 ? cutFrameIndices : beatShakeFrames())
-            : [],
+          autoEditVideo && cameraShakeEnabled ? effectFrames() : [],
+        );
+        const zoomFrames = new Set(
+          autoEditVideo && cutZoomEnabled ? effectFrames() : [],
         );
         const createVisualizerFrame = createVisualizerFrameGenerator(
           config, backgroundWidth, backgroundHeight, defaultColor, spectrumBusMargin
@@ -811,6 +818,10 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
             spectrum,
           };
           const frameImage = createVisualizerFrame(commonVisualizerFrameProps);
+          const zoomScale = getCutZoomScale(i, zoomFrames, zoomScales);
+          if (zoomScale > 1) {
+            applyCutZoom(frameImage, backgroundWidth, backgroundHeight, zoomScale);
+          }
           const shakeOffset = getCutShakeOffset(i, shakeFrames, shakeAmplitudes, shakeDelayFrames);
           if (shakeOffset.x !== 0 || shakeOffset.y !== 0) {
             applyCameraShake(frameImage, backgroundWidth, backgroundHeight, shakeOffset.x, shakeOffset.y);

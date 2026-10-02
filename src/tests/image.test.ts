@@ -13,6 +13,11 @@ import {
   getCutShakeOffset,
   buildCutShakeAmplitudes,
   CUT_SHAKE_AMPLITUDE_BY_OFFSET,
+  applyCutZoom,
+  getCutZoomScale,
+  buildCutZoomScales,
+  CUT_ZOOM_PEAK_SCALE,
+  DEFAULT_CUT_ZOOM_FRAMES,
 } from '../image';
 import { createBpmEncoder } from '../bpmEncoder';
 
@@ -171,6 +176,53 @@ describe('image', function () {
   it('applyCameraShake is a no-op at zero offset', function () {
     const data = Buffer.from([1, 2, 3, 10, 20, 30]);
     applyCameraShake({ shiftPos: 3, rowBytes: 3, data }, 1, 1, 0, 0);
+    expect(Array.from(data)).deep.equal([1, 2, 3, 10, 20, 30]);
+  });
+
+  it('buildCutZoomScales starts at peak and eases out towards 1', function () {
+    const scales = buildCutZoomScales(18);
+    expect(scales).to.have.length(6);
+    expect(scales[0]).equal(CUT_ZOOM_PEAK_SCALE);
+    for (let i = 1; i < scales.length; i++) {
+      expect(scales[i]).lessThan(scales[i - 1]);
+      expect(scales[i]).greaterThan(1);
+    }
+    expect(buildCutZoomScales(0)).to.have.length(DEFAULT_CUT_ZOOM_FRAMES);
+    expect(buildCutZoomScales(3)).to.have.length(3);
+  });
+
+  it('getCutZoomScale uses the most recent cut', function () {
+    const scales = [1.3, 1.2, 1.1];
+    const cutFrames = new Set([10, 11]);
+    expect(getCutZoomScale(9, cutFrames, scales)).equal(1);
+    expect(getCutZoomScale(10, cutFrames, scales)).equal(1.3);
+    expect(getCutZoomScale(11, cutFrames, scales)).equal(1.3);
+    expect(getCutZoomScale(13, cutFrames, scales)).equal(1.1);
+    expect(getCutZoomScale(14, cutFrames, scales)).equal(1);
+  });
+
+  it('applyCutZoom scales around the center and keeps the header', function () {
+    const width = 4;
+    const height = 1;
+    const rowBytes = 3 * width;
+    const shiftPos = 2;
+    const data = Buffer.alloc(shiftPos + rowBytes, 0);
+    data[0] = 9;
+    data[1] = 8;
+    [0, 100, 200, 250].forEach((value, x) => data.fill(value, shiftPos + x * 3, shiftPos + x * 3 + 3));
+
+    applyCutZoom({ shiftPos, rowBytes, data }, width, height, 2);
+
+    expect(data[0]).equal(9);
+    expect(data[1]).equal(8);
+    const channel = (x: number) => data[shiftPos + x * 3];
+    // srcX = 1.5 + (x - 1.5) / 2 -> 0.75, 1.25, 1.75, 2.25
+    expect([0, 1, 2, 3].map(channel)).deep.equal([75, 125, 175, 213]);
+  });
+
+  it('applyCutZoom is a no-op at scale 1', function () {
+    const data = Buffer.from([1, 2, 3, 10, 20, 30]);
+    applyCutZoom({ shiftPos: 0, rowBytes: 6, data }, 2, 1, 1);
     expect(Array.from(data)).deep.equal([1, 2, 3, 10, 20, 30]);
   });
 

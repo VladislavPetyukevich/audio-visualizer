@@ -10,6 +10,7 @@ import {
   getBackgroundVideoPaths,
   getHookVideoPath,
   getCameraShakeEnabled,
+  getCutZoomEnabled,
   getOutVideoPath,
   getSubtitleRenderSpec,
   subtitleAlignmentToAss,
@@ -127,6 +128,20 @@ describe('config', function() {
 
     expect(
       getCameraShakeEnabled({ video: { path: 'test/path', cameraShake: false } } as Config)
+    ).equal(false);
+  });
+
+  it('getCutZoomEnabled', function() {
+    expect(
+      getCutZoomEnabled({ video: { path: 'test/path' } } as Config)
+    ).equal(false);
+
+    expect(
+      getCutZoomEnabled({ video: { path: 'test/path', cutZoom: true } } as Config)
+    ).equal(true);
+
+    expect(
+      getCutZoomEnabled({ video: { path: 'test/path', cutZoom: false } } as Config)
     ).equal(false);
   });
 
