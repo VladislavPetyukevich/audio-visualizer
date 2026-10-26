@@ -6,6 +6,9 @@ import {
   getAudioFilePath,
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
+  getAudioBpm,
+  getAudioDropSeconds,
+  parseTimestampSeconds,
   getBackgroundImagePath,
   getBackgroundVideoPaths,
   getHookVideoPath,
@@ -67,6 +70,37 @@ describe('config', function() {
     expect(
       getAudioAutoHighlightCount.bind(undefined, { audio: { path: 'a.wav', autoHighlightCount: NaN } } as Config)
     ).to.throw('Invalid audio.autoHighlightCount');
+  });
+
+  it('getAudioBpm', function() {
+    expect(getAudioBpm({ audio: { path: 'a.wav' } } as Config)).equal(undefined);
+    expect(getAudioBpm({ audio: { path: 'a.wav', bpm: 122 } } as Config)).equal(122);
+    expect(getAudioBpm({ audio: { path: 'a.wav', bpm: 87.5 } } as Config)).equal(87.5);
+    expect(
+      getAudioBpm.bind(undefined, { audio: { path: 'a.wav', bpm: 0 } } as Config)
+    ).to.throw('Invalid audio.bpm');
+    expect(
+      getAudioBpm.bind(undefined, { audio: { path: 'a.wav', bpm: '120' } } as unknown as Config)
+    ).to.throw('Invalid audio.bpm');
+  });
+
+  it('parseTimestampSeconds', function() {
+    expect(parseTimestampSeconds(83.5)).equal(83.5);
+    expect(parseTimestampSeconds('83.5')).equal(83.5);
+    expect(parseTimestampSeconds('1:23.5')).equal(83.5);
+    expect(parseTimestampSeconds('01:02:03')).equal(3723);
+    expect(parseTimestampSeconds(-1)).equal(null);
+    expect(parseTimestampSeconds('1:2:3:4')).equal(null);
+    expect(parseTimestampSeconds('abc')).equal(null);
+  });
+
+  it('getAudioDropSeconds', function() {
+    expect(getAudioDropSeconds({ audio: { path: 'a.wav' } } as Config)).equal(undefined);
+    expect(getAudioDropSeconds({ audio: { path: 'a.wav', drop: 42 } } as Config)).equal(42);
+    expect(getAudioDropSeconds({ audio: { path: 'a.wav', drop: '0:42.25' } } as Config)).equal(42.25);
+    expect(
+      getAudioDropSeconds.bind(undefined, { audio: { path: 'a.wav', drop: 'soon' } } as Config)
+    ).to.throw('Invalid audio.drop');
   });
 
   it('getBackgroundImagePath', function() {

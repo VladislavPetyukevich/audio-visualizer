@@ -446,6 +446,9 @@ export function snapSegmentToBeats(
  * (see `snapDropToBeat`), so the hook ends on the beat. When no drop fits, the lead-in is put before the energy
  * window instead. The lead-in is never shortened: where it reaches back past the track start,
  * the run starts at a negative frame and that part is silent (see `buildHighlightRun`).
+ *
+ * With `dropFrame` (a drop given in the config), the first window is built around it as above
+ * (without a lead-in it simply starts at the drop), and it is not moved onto a beat.
  */
 export async function computeHighlightSlice(
   fps: number,
@@ -455,6 +458,7 @@ export async function computeHighlightSlice(
   segmentCount = 1,
   beatGrid?: HighlightBeatGrid | null,
   leadInFrames?: number,
+  dropFrame?: number,
 ): Promise<{
   startFrame: number;
   highlightFrames: number;
@@ -512,8 +516,15 @@ export async function computeHighlightSlice(
   const dropWindowFrames = Math.round(DROP_WINDOW_SEC * fps);
 
   const n = Math.max(1, Math.floor(segmentCount));
+  const roundedDropFrame = dropFrame !== undefined ? Math.round(dropFrame) : -1;
+  const manualDrop = roundedDropFrame >= 0 && roundedDropFrame < totalFrames
+    ? { startFrame: roundedDropFrame - (useDrops ? leadInFrames as number : 0), dropFrame: roundedDropFrame }
+    : null;
   for (let k = 0; k < n; k++) {
-    const drop = useDrops
+    const isManualDrop = k === 0 && manualDrop !== null;
+    const drop = isManualDrop
+      ? manualDrop
+      : useDrops
       ? findBestDropSegment(
           energies,
           totalFrames,
@@ -524,10 +535,12 @@ export async function computeHighlightSlice(
         )
       : null;
     if (drop) {
-      snapDropToBeat(drop, beatFrames, beatGrid?.periodFrames);
+      if (!isManualDrop) {
+        snapDropToBeat(drop, beatFrames, beatGrid?.periodFrames);
+      }
       // Only the part from the drop on is ~15s; its end is snapped to a beat.
       const main = snapSegmentToBeats(
-        { startFrame: drop.dropFrame, highlightFrames },
+        { startFrame: drop.dropFrame, highlightFrames: Math.min(highlightFrames, totalFrames - drop.dropFrame) },
         totalFrames,
         beatFrames,
         maxShiftFrames,
@@ -538,7 +551,7 @@ export async function computeHighlightSlice(
       rawSegments.push({
         startFrame: drop.startFrame,
         highlightFrames: dropLeadIn + main.highlightFrames,
-        leadInFrames: dropLeadIn,
+        ...(useDrops && { leadInFrames: dropLeadIn }),
       });
       excludeRanges.push({
         start: drop.startFrame - maxShiftFrames,

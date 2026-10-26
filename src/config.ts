@@ -70,6 +70,49 @@ export const getAudioAutoHighlightCount = (config: Config): number => {
   return raw;
 };
 
+export const getAudioBpm = (config: Config): number | undefined => {
+  const raw = config.audio.bpm;
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    throw new Error(
+      `Invalid audio.bpm: expected a finite number > 0, got '${String(raw)}'.`,
+    );
+  }
+  return raw;
+};
+
+/** Parses seconds (`83.5`) or a `m:ss(.sss)` / `h:mm:ss(.sss)` timestamp (`'1:23.5'`). */
+export const parseTimestampSeconds = (value: number | string): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const match = /^\s*(?:(\d+):)?(?:(\d+):)?(\d+(?:\.\d+)?)\s*$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const parts = [match[1], match[2], match[3]].filter(part => part !== undefined).map(Number);
+  return parts.reduce((total, part) => total * 60 + part, 0);
+};
+
+export const getAudioDropSeconds = (config: Config): number | undefined => {
+  const raw = config.audio.drop;
+  if (raw === undefined) {
+    return undefined;
+  }
+  const seconds = parseTimestampSeconds(raw);
+  if (seconds === null) {
+    throw new Error(
+      `Invalid audio.drop: expected seconds >= 0 or a 'm:ss' timestamp, got '${String(raw)}'.`,
+    );
+  }
+  return seconds;
+};
+
 export const getBackgroundImagePath = (config: Config) =>
   config.image ? path.resolve(config.image.path) : undefined;
 

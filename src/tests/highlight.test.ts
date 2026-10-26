@@ -342,6 +342,42 @@ describe('computeHighlightSlice', function() {
       expect(result.runs[i].startFrame).gte(prev.startFrame + prev.highlightFrames);
     }
   });
+  it('starts the first window at a configured drop instead of the loudest stretch', async function() {
+    const fps = 30;
+    const totalFrames = 3000;
+    const highlightFrames = Math.ceil(HIGHLIGHT_DURATION_SEC * fps);
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 2000, 2600);
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 1, null, undefined, 300.4);
+
+    expect(result.startFrame).equal(300);
+    expect(result.highlightFrames).equal(highlightFrames);
+    expect(result.runs[0].leadInFrames).equal(undefined);
+  });
+
+  it('ends the lead-in on a configured drop without snapping it to a beat', async function() {
+    const fps = 30;
+    const totalFrames = 3000;
+    const spectrums = spectrumsWithEnergyInRange(totalFrames, 2000, 2600);
+    const beatGrid = { periodFrames: 15, phaseFrame: 0 };
+
+    const result = await computeHighlightSlice(fps, totalFrames, spectrums, [], 2, beatGrid, 90, 1003);
+
+    expect(result.runs).have.length(2);
+    expect(result.runs[0].startFrame).equal(1003 - 90);
+    expect(result.runs[0].leadInFrames).equal(90);
+    // The second run still comes from drop detection.
+    expect(result.runs[1].startFrame).equal(2000 - 90);
+  });
+
+  it('shortens a configured drop window that would run past the track end', async function() {
+    const fps = 30;
+    const totalFrames = 1000;
+    const result = await computeHighlightSlice(fps, totalFrames, dummySpectrums(totalFrames), [], 1, null, undefined, 800);
+
+    expect(result.startFrame).equal(800);
+    expect(result.highlightFrames).equal(200);
+  });
 });
 
 describe('buildBeatCandidates', function() {

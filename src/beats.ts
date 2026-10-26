@@ -204,6 +204,45 @@ export const estimateTempo = (
   }
 };
 
+/**
+ * Applies a configured BPM and/or drop time to a detected tempo. Either one makes the grid a
+ * regular one (tracked beat times are dropped, as they follow a different grid): `bpm` sets its
+ * period and `dropSec` its phase, so the drop lands on a beat. Without a drop, the phase is fit
+ * to the tracked beats, or else to `onsetFrames`. Returns `estimate` when neither is set.
+ */
+export const applyTempoOverrides = (
+  estimate: TempoEstimate | null,
+  fps: number,
+  overrides: { bpm?: number; dropSec?: number },
+  onsetFrames: number[] = [],
+): TempoEstimate | null => {
+  const { bpm, dropSec } = overrides;
+  if (bpm === undefined && dropSec === undefined) {
+    return estimate;
+  }
+  const periodFrames = bpm !== undefined && bpm > 0
+    ? fps * 60 / bpm
+    : estimate?.periodFrames;
+  if (!periodFrames || !(periodFrames > 0) || !(fps > 0)) {
+    return estimate;
+  }
+  let phaseFrame: number;
+  if (dropSec !== undefined) {
+    phaseFrame = wrapIntoPeriod(dropSec * fps, periodFrames);
+  } else if (estimate?.beatsSec && estimate.beatsSec.length > 0) {
+    phaseFrame = circularMeanPhase(estimate.beatsSec.map(t => t * fps), periodFrames);
+  } else if (onsetFrames.length > 0) {
+    phaseFrame = circularMeanPhase(onsetFrames, periodFrames);
+  } else {
+    phaseFrame = estimate ? wrapIntoPeriod(estimate.phaseFrame, periodFrames) : 0;
+  }
+  return {
+    bpm: bpm ?? estimate!.bpm,
+    periodFrames,
+    phaseFrame,
+  };
+};
+
 export const shiftTempoPhase = (
   tempo: TempoEstimate,
   startFrame: number,

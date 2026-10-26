@@ -39,14 +39,16 @@ import {
   getCutZoomEnabled,
   getAudioAutoHighlight,
   getAudioAutoHighlightCount,
+  getAudioBpm,
+  getAudioDropSeconds,
 } from './config';
 import { createAudioBuffer, bufferToUInt8, createSpectrumsProcessor, pcmU8ToFloatSamples } from './audio';
 import { parseImage, getImageColor, getVideoFrameColor, invertColor, Color, convertToBmp, createSpectrumVisualizerFrameGenerator, createPolarVisualizerFrameGenerator, CreatePolarVisualizerFrameProps, CreateVisualizerFrameProps, CommonVisualizerFrameProps, applyCameraShake, getCutShakeOffset, buildCutShakeAmplitudes, CAMERA_SHAKE_DELAY_SECONDS, CAMERA_SHAKE_EVERY_BEATS, applyCutZoom, getCutZoomScale, buildCutZoomScales } from './image';
 import { normalizeInlineSubtitlesToSrt, lrcToSrt } from './subtitleConvert';
 import { spawnFfmpegVideoWriter, waitDrain, waitForProcessExit, getVideoInfo, spawnVideoFrameReader, readVideoFrame, detectSceneChanges, buildBeatSyncedSegments, buildSequentialVideoSegments, buildShuffledVideoSegments, computeHookFrameCount, getVideoFrameCount, getCutFrameIndices, writeConcatFile, writeSubtitlesFile, spawnConcatVideoFrameReader, cleanupConcatFile, cleanupTempFile, VideoSegment } from './video';
 import { createBpmEncoder, createBgrFrameEncoder, EncodedBmp } from './bpmEncoder';
-import { createBeatDetector, estimateTempo, TempoEstimate, beatGridFrameIndices, tempoForWindow, shiftTempoPhase, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
-export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
+import { createBeatDetector, estimateTempo, applyTempoOverrides, TempoEstimate, beatGridFrameIndices, tempoForWindow, shiftTempoPhase, MAX_TEMPO_ANALYSIS_SECONDS } from './beats';
+export { BeatInfo, BeatDetectorOptions, TempoEstimate, estimateTempo, applyTempoOverrides, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from './beats';
 import { computeHighlightSlice, HIGHLIGHT_DURATION_SEC } from './highlight';
 import { waitForEventLoop } from './waitForEventLoop';
 export { computeHighlightSlice, HIGHLIGHT_DURATION_SEC, MAX_BEAT_SNAP_SEC, BeatFrameEvent, HighlightAudioSegment, HighlightRun, HighlightBeatGrid } from './highlight';
@@ -65,6 +67,14 @@ export interface Config {
     autoHighlight?: boolean;
     /** When `autoHighlight` is true, number of non-overlapping ~15s beat-aligned windows to stitch (default 1). */
     autoHighlightCount?: number;
+    /** Track tempo; replaces the detected BPM for the beat grid (cuts, shakes, highlight snapping). */
+    bpm?: number;
+    /**
+     * Time of the beat drop, in seconds or as a `m:ss(.sss)` timestamp. Anchors the beat grid
+     * (the drop is on a beat) and, with `autoHighlight`, the first highlight starts at the drop
+     * (or the hook ends on it) instead of a detected one.
+     */
+    drop?: number | string;
   };
   image?: {
     path: string;
@@ -608,14 +618,28 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
     const autoHighlight = getAudioAutoHighlight(config);
     const autoEditVideo = getAutoEditVideo(config);
     // Beat grid for video cuts (autoEdit) and for snapping highlight boundaries to beats.
+    const configBpm = getAudioBpm(config);
+    const configDropSec = getAudioDropSeconds(config);
+    if (configDropSec !== undefined && configDropSec * FPS >= framesCount) {
+      throw new Error(`audio.drop (${configDropSec}s) is past the end of the audio.`);
+    }
     let trackTempo: TempoEstimate | null = null;
     if (autoEditVideo || autoHighlight) {
-      const sampleRateNum = Number(sampleRate);
-      const maxSamples = Math.floor(sampleRateNum * MAX_TEMPO_ANALYSIS_SECONDS);
-      const tempoBuffer = audioBuffer.length > maxSamples
-        ? audioBuffer.slice(0, maxSamples)
-        : audioBuffer;
-      trackTempo = estimateTempo(pcmU8ToFloatSamples(tempoBuffer), sampleRateNum, FPS);
+      // Both BPM and drop given fully define the grid, so detection is skipped.
+      if (configBpm === undefined || configDropSec === undefined) {
+        const sampleRateNum = Number(sampleRate);
+        const maxSamples = Math.floor(sampleRateNum * MAX_TEMPO_ANALYSIS_SECONDS);
+        const tempoBuffer = audioBuffer.length > maxSamples
+          ? audioBuffer.slice(0, maxSamples)
+          : audioBuffer;
+        trackTempo = estimateTempo(pcmU8ToFloatSamples(tempoBuffer), sampleRateNum, FPS);
+      }
+      trackTempo = applyTempoOverrides(
+        trackTempo,
+        FPS,
+        { bpm: configBpm, dropSec: configDropSec },
+        preprocessed.beatFrameIndices,
+      );
     }
     let spectrumsForRender = preprocessed.spectrums;
     let beatIndicesForRender = preprocessed.beatFrameIndices;
@@ -642,6 +666,7 @@ export const renderAudioVisualizer = (config: Config, onProgress?: (progress: nu
         getAudioAutoHighlightCount(config),
         trackTempo,
         hookLeadInFrames,
+        configDropSec !== undefined ? configDropSec * FPS : undefined,
       );
       spectrumsForRender = highlightSlice.spectrums;
       beatIndicesForRender = highlightSlice.beatFrameIndices;

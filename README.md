@@ -21,6 +21,8 @@ const config = {
     path: 'media/audio.wav', // Supports MP3 and WAV audio
     autoHighlight: true, // Optional. Cuts the most energetic ~15s of the track. Start and end are moved onto beats (by up to 1.5s each), preferring a length of whole 4-beat bars, so the highlight may run slightly shorter or longer than 15s.
     autoHighlightCount: 3, // Optional. With autoHighlight: how many non-overlapping ~15s windows with the highest summed spectral energy to aim for (default 1; must be a whole number ≥ 1). You may get fewer videos if the track is too short or does not have that many valid windows. More than one window produces separate videos next to outVideo.path (e.g. out-1.mp4, out-2.mp4).
+    bpm: 122, // Optional. Track tempo, used instead of the detected BPM for the beat grid (autoEdit cuts, camera shake, cut zoom, highlight snapping). Must be a number > 0.
+    drop: '1:04.5', // Optional. Time of the beat drop, in seconds (64.5) or as 'm:ss(.sss)' / 'h:mm:ss(.sss)'. The beat grid is aligned so the drop is on a beat. With autoHighlight, the first highlight starts at the drop (with video.hookPath, the hook ends on it) instead of a detected one; any further highlights are still detected. With both bpm and drop set, tempo detection is skipped.
   },
   outVideo: {
     path: 'media/out.mp4',

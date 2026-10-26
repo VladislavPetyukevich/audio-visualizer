@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow } from '../beats';
+import { estimateTempo, beatGridFrameIndices, shiftTempoPhase, tempoForWindow, applyTempoOverrides } from '../beats';
 
 const clickTrain = (
   sampleRate: number,
@@ -130,5 +130,39 @@ describe('beats', function () {
   it('beatGridFrameIndices stride emits every Nth beat', function () {
     expect(beatGridFrameIndices({ periodFrames: 14, phaseFrame: 0 }, 200, 4)).deep.equal([14, 70, 126, 182]);
     expect(beatGridFrameIndices({ periodFrames: 14, phaseFrame: 3 }, 200, 4)).deep.equal([3, 59, 115, 171]);
+  });
+
+  it('applyTempoOverrides returns the estimate unchanged without overrides', function () {
+    const estimate = { bpm: 120, periodFrames: 15, phaseFrame: 4, beatsSec: [0.1] };
+    expect(applyTempoOverrides(estimate, 30, {})).equal(estimate);
+    expect(applyTempoOverrides(null, 30, {})).equal(null);
+  });
+
+  it('applyTempoOverrides puts the drop on the configured BPM grid', function () {
+    // 120 BPM at 30 fps = 15 frames per beat; drop at 10.2s = frame 306 -> phase 6.
+    const tempo = applyTempoOverrides(null, 30, { bpm: 120, dropSec: 10.2 })!;
+    expect(tempo.bpm).equal(120);
+    expect(tempo.periodFrames).equal(15);
+    expect(tempo.phaseFrame).closeTo(6, 1e-9);
+    expect(tempo.beatsSec).equal(undefined);
+    expect(beatGridFrameIndices(tempo, 400)).include(306);
+  });
+
+  it('applyTempoOverrides keeps the detected period when only the drop is set', function () {
+    const estimate = { bpm: 100, periodFrames: 18, phaseFrame: 2, beatsSec: [0.0667] };
+    const tempo = applyTempoOverrides(estimate, 30, { dropSec: 1 })!;
+    expect(tempo.periodFrames).equal(18);
+    expect(tempo.phaseFrame).closeTo(12, 1e-9);
+    expect(tempo.beatsSec).equal(undefined);
+    expect(applyTempoOverrides(null, 30, { dropSec: 1 })).equal(null);
+  });
+
+  it('applyTempoOverrides fits the phase of a configured BPM to the detected beats', function () {
+    const estimate = { bpm: 118, periodFrames: 30 * 60 / 118, phaseFrame: 0, beatsSec: [0.2, 0.7, 1.2, 1.7] };
+    const tempo = applyTempoOverrides(estimate, 30, { bpm: 120 })!;
+    expect(tempo.periodFrames).equal(15);
+    expect(tempo.phaseFrame).closeTo(6, 1e-6);
+    const fromOnsets = applyTempoOverrides(null, 30, { bpm: 120 }, [21, 36, 51])!;
+    expect(fromOnsets.phaseFrame).closeTo(6, 1e-6);
   });
 });
